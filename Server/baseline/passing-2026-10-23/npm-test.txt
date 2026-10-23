@@ -1,0 +1,72 @@
+
+> server@1.0.0 test
+> node --require ./test/setup.js --test
+
+◇ injected env (9) from .env
+✔ student endpoints require a matching header token, including concept profiles (216.7074ms)
+Answer error: Error [MongoServerSelectionError]: database selection timed out
+    at Object.<anonymous> (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\test\apiAccess.test.js:61:19)
+    at Object.apply (node:internal/test_runner/mock/mock:758:20)
+    at getStudent (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\Services\studySessionService.js:73:40)
+    at Object.recordAnswer (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\Services\studySessionService.js:318:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\index.js:278:17
+Answer error: Error: Question not found: not-a-question
+    at requestError (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\Services\studySessionService.js:62:19)
+    at getQuestionFromRequest (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\Services\studySessionService.js:188:15)
+    at Object.recordAnswer (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\Services\studySessionService.js:261:9)
+    at C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\index.js:278:43
+    at Layer.handleRequest (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\node_modules\router\lib\layer.js:152:17)
+    at next (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\node_modules\router\lib\route.js:157:13)
+    at answerRateLimiter (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\middleware\rateLimit.js:145:12)
+    at Layer.handleRequest (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\node_modules\router\lib\layer.js:152:17)
+    at next (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\node_modules\router\lib\route.js:157:13)
+    at Route.dispatch (C:\Users\Ayush Birjani\OneDrive\Desktop\studytwin_fixed\studytwin\Server\node_modules\router\lib\route.js:117:3) {
+  statusCode: 400
+}
+✔ answer route distinguishes invalid questions from database outages (66.2755ms)
+LLM work review failed; continuing with deterministic analysis: 503 Service Unavailable: upstream LLM timed out
+✔ Failure Case 1: LLM service is completely offline/errors out (13.5628ms)
+✔ Failure Case 2: FastAPI ML service is offline (connection refused) (3.5438ms)
+✔ Failure Case 3: Empty student answer or missing answer (1.9787ms)
+✔ a blank submission is incorrect when the question's correct answer is zero (0.8904ms)
+✔ Failure Case 4: Missing work (empty work string) (4.5708ms)
+✔ Failure Case 5: Malformed and unparseable input work (2.0133ms)
+✔ Failure Case 6: Unknown question ID (1.1649ms)
+✔ Failure Case 7: Missing studentId (0.3988ms)
+✔ recurring misconceptions retain timestamps and identify their concept (22.6548ms)
+✔ question answers and worked solutions are returned only after submission (12.1627ms)
+✔ deterministic answer checking controls progress regardless of an LLM answer claim (3.5794ms)
+✔ each submission is checked by the LLM and uses only the five step-rule labels (8.094ms)
+✔ an LLM with no step diagnosis does not suppress deterministic rules or ML (5.2301ms)
+✔ LLM corrections are shown only when equivalent to the preceding submitted equation (7.7707ms)
+✔ rule-based step labels take precedence over conflicting LLM labels (4.169ms)
+✔ correct final answer with incorrect distribution shows a complete correction and is not scored as mastered (2.7926ms)
+✔ rule feedback corrects an incorrect inverse operation (1.3027ms)
+✔ incorrect answers without written work ask for steps rather than guessing (1.8481ms)
+✔ LLM prompt requests only work review using the five allowed step labels (9.6412ms)
+✔ LLM step labels are validated (3.4358ms)
+✔ an LLM step must match a submitted work line (1.668ms)
+✔ test\setup.js (856.1617ms)
+LLM work review failed; continuing with deterministic analysis: LLM service unavailable
+LLM work review failed; continuing with deterministic analysis: LLM service unavailable
+LLM work review failed; continuing with deterministic analysis: Service unavailable 503
+✔ Regression Target 1: arrow chain on one line without LLM diagnosed as wrong_inverse_op (io_002) (6.5446ms)
+✔ Regression Target 2: subtracted coefficient instead of dividing diagnosed as wrong_inverse_op (io_005) (1.9342ms)
+✔ Regression Target 3: skipped step with wrong evaluated result diagnosed as arithmetic_slip (eb_002) (1.0398ms)
+✔ Correct final answer with an invalid distribution step does not demonstrate mastery across arrow and newline work when LLM review is unavailable (10.9603ms)
+✔ Correct final answer with valid arrow-chain work is not flagged as a misconception (1.448ms)
+✔ Scenario 1: Correct answer and valid work -> Correct feedback; mastery can increase (4.3045ms)
+✔ Scenario 2: Incorrect answer with a distribution error -> Incorrect feedback; identify faulty step and give valid correction (2.3664ms)
+✔ Scenario 3: Correct final answer but invalid work -> Answer correctness remains separate from demonstrated mastery (1.9667ms)
+✔ Scenario 4: Valid alternative solution method -> Do not flag a mathematically valid method (2.2435ms)
+✔ Scenario 5: LLM unavailable -> Deterministic checks and ML fallback still work (2.1516ms)
+✔ saving progress preserves schema and creation metadata (9.8392ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1654.5023

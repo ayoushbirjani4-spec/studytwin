@@ -1,0 +1,13 @@
+{
+  "name": "studytwin",
+  "private": true,
+  "workspaces": [
+    "Server"
+  ],
+  "scripts": {
+    "start": "npm --workspace=server start",
+    "test": "npm --workspace=server test",
+    "eval": "npm --workspace=server run eval",
+    "export-attempts": "npm --workspace=server run export-attempts"
+  }
+}

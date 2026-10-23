@@ -1,0 +1,18 @@
+node_modules/
+.vercel/
+.env
+.env.*
+!.env.example
+Server/.env
+Server/to_label.csv
+
+# Generated eval artifacts (re-run npm run eval locally)
+Server/eval/last_results_*.json
+
+# Demo / local clutter
+screenshot_*.png
+e2e_screenshot*.png
+**/model.pkl
+model/
+test_e2e_browser.js
+test_all_five_scenarios_browser.js

@@ -1,0 +1,96 @@
+const { randomUUID } = require("node:crypto");
+const { MongoClient } = require("mongodb");
+
+const memoryAttempts = [];
+
+function useMemoryStore() {
+  return process.env.MEMORY_STORE === "1";
+}
+
+let client;
+let clientPromise;
+
+async function getCollection() {
+  if (useMemoryStore()) {
+    return null;
+  }
+
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error(
+      "MONGODB_URI must be configured to log student attempts."
+    );
+  }
+
+  if (!clientPromise) {
+    client = new MongoClient(uri);
+    clientPromise = client.connect().catch((error) => {
+      client = undefined;
+      clientPromise = undefined;
+      throw error;
+    });
+  }
+
+  await clientPromise;
+  return client
+    .db(process.env.MONGODB_DB_NAME || "studytwin")
+    .collection("student_attempts");
+}
+
+async function logAttempt(entry) {
+  const doc = {
+    _id: randomUUID(),
+    studentId: entry.studentId,
+    questionId: entry.questionId,
+    concept: entry.concept,
+    difficulty: entry.difficulty ?? null,
+    studentAnswer: String(entry.studentAnswer ?? ""),
+    work: String(entry.work ?? ""),
+    answerCorrect: Boolean(entry.answerCorrect),
+    demonstratedCorrect: Boolean(entry.demonstratedCorrect),
+    misconceptionDetected: Boolean(entry.misconceptionDetected),
+    misconceptionType: entry.misconceptionType ?? null,
+    misconceptionSource: entry.misconceptionSource ?? null,
+    createdAt: new Date()
+  };
+
+  if (useMemoryStore()) {
+    memoryAttempts.push(structuredClone(doc));
+    return doc;
+  }
+
+  const collection = await getCollection();
+  await collection.insertOne(doc);
+  return doc;
+}
+
+async function listAttempts({ limit = 5000, studentId } = {}) {
+  const capped = Math.min(Math.max(Number(limit) || 5000, 1), 50000);
+
+  if (useMemoryStore()) {
+    let rows = memoryAttempts.slice();
+    if (studentId) {
+      rows = rows.filter((row) => row.studentId === studentId);
+    }
+    return rows.slice(-capped);
+  }
+
+  const collection = await getCollection();
+  const filter = studentId ? { studentId } : {};
+  return collection
+    .find(filter)
+    .sort({ createdAt: -1 })
+    .limit(capped)
+    .toArray();
+}
+
+function clearMemoryAttempts() {
+  memoryAttempts.length = 0;
+}
+
+module.exports = {
+  logAttempt,
+  listAttempts,
+  clearMemoryAttempts,
+  useMemoryStore
+};

@@ -1,0 +1,81 @@
+
+> server@1.0.0 eval
+> node eval/run_eval.js
+
+
+MAIN SET (written alongside the rules)  —  63 cases
+============================================================
+Final-answer checking           100.0% (63/63)
+False positives on correct work 0.0% (0/22)   (lower is better)
+
+Wrong answers with work shown (34 cases)
+  Problem flagged (any label)   100.0% (34/34)
+  Exact label correct           100.0% (34/34)
+  Generic "invalid step" only   0.0% (0/34)
+
+Wrong answer, NO work (5)  Did not guess  100.0% (5/5)
+Right answer, wrong work (2)  Caught        100.0% (2/2)
+
+Per gold category (system label counts):
+  correct                  n=22  {"null":22}
+  failed_to_distribute     n=12  {"failed_to_distribute":12}
+  sign_error               n= 4  {"sign_error":4}
+  wrong_inverse_op         n= 7  {"wrong_inverse_op":7}
+  one_sided_op             n= 5  {"one_sided_op":5}
+  arithmetic_slip          n= 6  {"arithmetic_slip":6}
+  combining_unlike_terms   n= 2  {"combining_unlike_terms":2}
+  no_evidence              n= 5  {"unknown_error":5}
+
+STRESS SET (written to break them)  —  24 cases
+============================================================
+Final-answer checking           100.0% (24/24)
+False positives on correct work 0.0% (0/10)   (lower is better)
+
+Wrong answers with work shown (12 cases)
+  Problem flagged (any label)   100.0% (12/12)
+  Exact label correct           100.0% (12/12)
+  Generic "invalid step" only   0.0% (0/12)
+
+Wrong answer, NO work (2)  Did not guess  100.0% (2/2)
+Right answer, wrong work (0)  Caught        n/a
+
+Per gold category (system label counts):
+  correct                  n=10  {"null":10}
+  wrong_inverse_op         n= 8  {"wrong_inverse_op":8}
+  one_sided_op             n= 1  {"one_sided_op":1}
+  arithmetic_slip          n= 2  {"arithmetic_slip":2}
+  failed_to_distribute     n= 1  {"failed_to_distribute":1}
+  no_evidence              n= 2  {"unknown_error":2}
+
+UNSEEN SET (independent generalization)  —  31 cases
+============================================================
+Final-answer checking           100.0% (31/31)
+False positives on correct work 0.0% (0/8)   (lower is better)
+
+Wrong answers with work shown (19 cases)
+  Problem flagged (any label)   100.0% (19/19)
+  Exact label correct           100.0% (19/19)
+  Generic "invalid step" only   0.0% (0/19)
+
+Wrong answer, NO work (2)  Did not guess  100.0% (2/2)
+Right answer, wrong work (2)  Caught        100.0% (2/2)
+
+Per gold category (system label counts):
+  correct                  n= 8  {"null":8}
+  failed_to_distribute     n= 6  {"failed_to_distribute":6}
+  sign_error               n= 4  {"sign_error":4}
+  wrong_inverse_op         n= 5  {"wrong_inverse_op":5}
+  one_sided_op             n= 2  {"one_sided_op":2}
+  combining_unlike_terms   n= 2  {"combining_unlike_terms":2}
+  arithmetic_slip          n= 2  {"arithmetic_slip":2}
+  no_evidence              n= 2  {"unknown_error":2}
+
+Per-case results saved to eval/last_results_*.json
+
+── Real-data benchmark not run ──────────────────────────────────────
+  1. Collect attempts: start the server with MONGODB_URI set.
+  2. Export blind:     node scripts/export_attempts.js --blind --format csv --out to_label.csv
+  3. Label the CSV:    fill in the empty "gold" column for each row.
+     Valid labels: failed_to_distribute  sign_error  wrong_inverse_op  one_sided_op  arithmetic_slip  combining_unlike_terms  correct  no_evidence
+  4. Score:            node eval/run_eval.js --real-data to_label.csv
+─────────────────────────────────────────────────────────────────────

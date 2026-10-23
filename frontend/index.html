@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="StudyTwin adaptive mathematics tutor" />
+  <title>StudyTwin — Adaptive Math Tutor</title>
+  <link rel="stylesheet" href="./css/style.css" />
+  <style>
+    .step-correction{display:grid;gap:9px;margin-top:12px}
+    .step-correction.hidden,.submitted-work-box.hidden{display:none}
+    .step-correction>div{display:grid;gap:5px}
+    .step-correction code{display:block;overflow-wrap:anywhere;padding:8px 10px;border-radius:8px;background:#fff;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+    .step-correction #correctStep{border:1px solid #b9e4cf;background:#f2fbf6}
+    .step-correction p{margin:3px 0 0}
+    .submitted-work-box{margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+    .incorrect-work-step{color:#a93232;font-weight:700;background:#fff0f0;border-radius:6px;padding-left:5px}
+    .metric-sub{display:block;color:#8a94a6;font-size:10px;margin-top:1px}
+
+    /* Next learning step card */
+    .next-step-card{border:2px solid var(--primary);background:#f7f7ff}
+    .next-step-content{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+    .next-step-concept{font-size:15px;font-weight:750;color:var(--primary);margin:0 0 5px}
+    .next-step-reason{font-size:12px;color:#596376;line-height:1.55;margin:0}
+    .next-step-badge{flex:0 0 auto;padding:5px 9px;border-radius:999px;background:#ededff;color:var(--primary);font-size:10px;font-weight:800}
+    .practice-skill-button{margin-top:2px}
+
+    /* Common mistakes */
+    .mistake-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px}
+    .mistake-row:last-child{border-bottom:none}
+    .mistake-label{font-weight:650}
+    .mistake-concept{display:block;color:#8a94a6;font-size:11px;margin-top:2px}
+    .mistake-count{background:#fff7e8;color:#8a5800;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:750}
+
+    /* Recent attempts table */
+    .attempts-table{width:100%;border-collapse:collapse;font-size:12px}
+    .attempts-table th{text-align:left;font-size:10px;font-weight:800;color:#8a94a6;letter-spacing:.08em;padding:0 8px 9px;border-bottom:1px solid var(--border)}
+    .attempts-table td{padding:9px 8px;border-bottom:1px solid #f0f2f5;vertical-align:top}
+    .attempts-table tr:last-child td{border-bottom:none}
+    .result-correct{color:var(--success);font-weight:700}
+    .result-incorrect{color:var(--danger);font-weight:700}
+    .result-warning{color:var(--warning);font-weight:700}
+    .mistake-tag{display:inline-block;background:#fff7e8;color:#8a5800;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700}
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">ST</div>
+        <div><strong>StudyTwin</strong><span>Adaptive Math Tutor</span></div>
+      </div>
+
+      <div class="student-card">
+        <div class="avatar">S</div>
+        <div><span class="muted">Student</span><strong id="studentIdLabel">You</strong></div>
+      </div>
+
+      <div class="side-section">
+        <span class="section-label">THIS SESSION</span>
+        <div class="stat-row"><span>Answered</span><strong id="questionCount">0</strong></div>
+        <div class="stat-row"><span>Mastered</span><strong id="correctCount">0</strong></div>
+        <div class="stat-row"><span>Mastery</span><strong id="accuracyValue">0%</strong></div>
+      </div>
+
+      <div class="side-section">
+        <span class="section-label">CURRENT SKILL</span>
+        <div class="skill-card">
+          <div class="skill-icon">∑</div>
+          <div><strong id="conceptLabel">Distributive Property</strong><span id="levelLabel">Easy</span></div>
+        </div>
+      </div>
+
+      <button id="dashboardButton" class="ghost-button">View My Progress</button>
+      <button id="resetButton" class="ghost-button">Reset Student</button>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">PERSONALIZED PRACTICE</span>
+          <h1>Learn at your level.</h1>
+          <p class="topbar-subtitle">Your StudyTwin adjusts the next problem from your performance.</p>
+        </div>
+        <div class="connection-pill" id="connectionStatus"><span class="status-dot"></span> API connected</div>
+      </header>
+
+      <section id="startPanel" class="start-panel">
+        <div class="hero-badge">AI-POWERED LEARNING</div>
+        <h2>Practice that changes with you.</h2>
+        <p>Answer a problem and show your work. StudyTwin uses your correctness, recent accuracy and detected misconceptions to choose the next challenge.</p>
+
+        <div class="start-controls">
+          <label>Concept<select id="conceptSelect"><option value="distributive_property">Distributive Property</option></select></label>
+          <label>Starting difficulty<select id="difficultySelect"><option value="1">Easy</option><option value="2">Medium</option><option value="3">Hard</option></select></label>
+        </div>
+
+        <button id="startButton" class="primary-button">Start Practice <span>→</span></button>
+        <p id="startError" class="error-text hidden"></p>
+      </section>
+
+      <section id="practicePanel" class="practice-panel hidden">
+        <div class="progress-header">
+          <div>
+            <span class="eyebrow">QUESTION <span id="questionNumber">1</span></span>
+            <div class="difficulty-badge" id="difficultyBadge">Easy</div>
+          </div>
+          <div class="progress-meta"><span id="progressText">Question 1 of 5</span><div class="progress-track"><div id="progressBar" class="progress-fill"></div></div></div>
+        </div>
+
+        <div class="question-card">
+          <div class="question-topline"><span class="concept-chip" id="questionConcept">Distributive Property</span><span class="question-id" id="questionId" hidden></span></div>
+          <h2 id="questionText">Loading question...</h2>
+          <p class="question-helper">Take your time. Showing your steps helps StudyTwin understand how you learn.</p>
+        </div>
+
+        <div class="answer-grid">
+          <div class="input-card answer-card">
+            <label for="answerInput">Your answer</label>
+            <input id="answerInput" type="text" autocomplete="off" placeholder="e.g. 4" />
+            <p class="field-hint">Enter only your final answer here.</p>
+          </div>
+          <div class="input-card work-card">
+            <label for="workInput">Show your work <span>Required</span></label>
+            <textarea id="workInput" rows="7" placeholder="Write each step on its own line,&#10;one equation per line."></textarea>
+            <p class="field-hint">StudyTwin finds misconceptions from your steps, not just your final answer.</p>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="submitButton" class="primary-button">Check Answer <span>→</span></button>
+          <span id="submitStatus" class="muted"></span>
+        </div>
+
+        <section id="feedbackPanel" class="feedback-panel hidden">
+          <div id="feedbackHeader" class="feedback-header">
+            <div id="feedbackIcon" class="feedback-icon">✓</div>
+            <div><span class="eyebrow">YOUR RESULT</span><h3 id="feedbackTitle">Correct!</h3><p id="feedbackMessage"></p></div>
+          </div>
+
+          <div id="misconceptionBox" class="insight-box hidden">
+            <div class="insight-label">MISCONCEPTION DETECTED</div>
+            <strong id="misconceptionType">Failed to distribute</strong>
+            <p id="misconceptionMessage"></p>
+            <div id="stepCorrection" class="step-correction hidden">
+              <div><strong>Your step</strong><code id="incorrectStep"></code></div>
+              <div id="correctStepRow" class="hidden"><strong>Correct step</strong><code id="correctStep"></code></div>
+              <p id="stepExplanation"></p>
+            </div>
+            <div class="hint"><strong>Hint:</strong> <span id="hintText"></span></div>
+          </div>
+
+          <div class="adaptation-card">
+            <div class="adaptation-title"><span>StudyTwin prediction</span><strong id="probabilityText">0%</strong></div>
+            <div class="probability-track"><div id="probabilityBar" class="probability-fill"></div></div>
+            <div class="adaptation-meta"><span>Predicted chance of success</span><strong id="recommendationShort">—</strong></div>
+            <p id="recommendationText" class="recommendation-text">Analyzing your performance...</p>
+            <div class="difficulty-change"><span>Next difficulty</span><strong id="nextDifficultyText">Easy</strong></div>
+          </div>
+
+          <div class="solution-box">
+            <div id="submittedWorkBox" class="submitted-work-box hidden">
+              <div class="solution-title">Your submitted work</div>
+              <ol id="submittedWorkSteps"></ol>
+            </div>
+            <div class="solution-title">Worked solution</div>
+            <ol id="solutionSteps"></ol>
+            <p id="solutionExplanation"></p>
+          </div>
+
+          <button id="nextButton" class="primary-button next-button">Continue to Next Question <span>→</span></button>
+        </section>
+      </section>
+
+      <section id="dashboardPanel" class="dashboard-panel hidden">
+        <div class="dashboard-heading"><div><span class="eyebrow">YOUR LEARNING PROFILE</span><h2>See how you're learning.</h2><p>StudyTwin builds this profile from your practice history.</p></div><button id="backToPracticeButton" class="ghost-button">← Back to Practice</button></div>
+        <div class="dashboard-grid">
+          <div class="metric-card">
+            <span>Demonstrated mastery</span>
+            <strong id="profileAccuracy">0%</strong>
+            <small id="profileAttempts">0 attempts</small>
+            <small class="metric-sub" id="profileRawAccuracy" title="How often the final answer was numerically correct, regardless of written work quality"></small>
+          </div>
+          <div class="metric-card"><span>Learning level</span><strong id="profileLevel">Beginning</strong><small>Based on current performance</small></div>
+          <div class="metric-card"><span>Misconceptions</span><strong id="profileMisconceptions">0</strong><small>Detected learning patterns</small></div>
+        </div>
+
+        <div id="nextLearningStepCard" class="profile-card next-step-card hidden">
+          <div class="card-title">Next learning step</div>
+          <div id="nextLearningStepContent"></div>
+          <button id="practiceSkillButton" class="primary-button practice-skill-button">Practice this skill <span>→</span></button>
+        </div>
+
+        <div class="profile-card"><div class="card-title">Concept mastery</div><div id="conceptMastery"></div></div>
+
+        <div id="weakestConceptsCard" class="profile-card hidden">
+          <div class="card-title">Concepts needing most practice</div>
+          <div id="weakestConceptsList"></div>
+        </div>
+
+        <div id="commonMistakesCard" class="profile-card hidden">
+          <div class="card-title">Common mistakes</div>
+          <div id="commonMistakesList"></div>
+        </div>
+
+        <div id="recentAttemptsCard" class="profile-card hidden">
+          <div class="card-title">Recent attempts</div>
+          <table id="recentAttemptsTable" class="attempts-table">
+            <thead><tr><th>Concept</th><th>Difficulty</th><th>Result</th><th>Mistake identified</th></tr></thead>
+            <tbody id="recentAttemptsList"></tbody>
+          </table>
+        </div>
+
+        <div class="profile-card recommendation-card"><div class="card-title">StudyTwin recommendation</div><p id="profileRecommendation">Start practicing to build your learning profile.</p></div>
+        <p id="dashboardError" class="error-text hidden"></p>
+      </section>
+
+      <div id="globalError" class="error-banner hidden"></div>
+    </main>
+  </div>
+  <script src="./js/app.js?v=20261022-1"></script>
+</body>
+</html>
