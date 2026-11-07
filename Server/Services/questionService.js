@@ -249,6 +249,24 @@ function getNextQuestion({
     );
 }
 
+// A targeted session walks through the selected concept from easier to
+// harder questions, taking a question the learner has not just seen first.
+function getTargetedQuestion({ concept, usedQuestionIds = [], recentQuestionIds = [] }) {
+    const candidates = getConceptQuestions(concept)
+        .slice()
+        .sort((a, b) => a.difficulty - b.difficulty || a.id.localeCompare(b.id));
+
+    if (candidates.length === 0) return null;
+
+    const excluded = new Set([...usedQuestionIds, ...recentQuestionIds]);
+    return candidates.find(question => !excluded.has(question.id)) || candidates[0];
+}
+
+function getNextMixedQuestion({ recentQuestionIds = [] } = {}) {
+    const candidates = removeRecentQuestions(questions, recentQuestionIds);
+    return chooseRandomQuestion(candidates.length > 0 ? candidates : questions);
+}
+
 
 // ============================================================
 // ADAPT DIFFICULTY USING ML PROBABILITY
@@ -632,6 +650,8 @@ module.exports = {
     // Question selection
 
     getNextQuestion,
+    getTargetedQuestion,
+    getNextMixedQuestion,
 
     getAdaptiveQuestion,
 

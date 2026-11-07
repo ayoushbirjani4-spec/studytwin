@@ -8,4 +8,4 @@ Validation:
 - Full command output: `npm-test.txt` and `npm-eval.txt`.
 - Per-case evaluation results: `last_results_main.json`, `last_results_stress.json`, and `last_results_unseen.json`.
 
-Baseline data policy: reset currently removes the progress record only, and attempt rows can remain. The changes after this snapshot define reset as complete deletion of both progress and raw attempt history. `.env`, dependencies, and generated model files are excluded from Git.
+Baseline data policy: reset currently removes the progress record only, and attempt rows can remain. The changes after this snapshot define reset as complete deletion of both progress and raw attempt history. `.env`, dependencies, and Python bytecode are excluded from Git. The packaged step-classifier model is included because the runtime uses it; the separately trained `model/model.pkl` is ignored.

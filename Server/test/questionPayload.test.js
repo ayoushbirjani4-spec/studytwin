@@ -154,11 +154,13 @@ test("deterministic answer checking controls progress regardless of an LLM answe
 
 test("each submission is checked by the LLM and uses only the five step-rule labels", async (t) => {
   let request;
+  let reviewCalls = 0;
 
   t.mock.method(
     llmReviewService,
     "reviewSubmission",
     async (input) => {
+      reviewCalls += 1;
       request = input;
       return {
         label: "wrong_inverse_op",
@@ -175,6 +177,7 @@ test("each submission is checked by the LLM and uses only the five step-rule lab
   });
 
   assert.equal(result.correct, false);
+  assert.equal(reviewCalls, 1);
   assert.equal(result.correctnessSource, "rules");
   assert.equal(result.misconception.type, "wrong_inverse_op");
   assert.equal(result.misconception.source, "rules");
@@ -196,6 +199,7 @@ test("each submission is checked by the LLM and uses only the five step-rule lab
     parsedWorkResult.misconception.type,
     "unknown_error"
   );
+  assert.equal(reviewCalls, 2);
   assert.equal(
     request.work,
     "3x=18\nx=18/3",
@@ -390,6 +394,42 @@ test("rule feedback corrects an incorrect inverse operation", async (t) => {
   assert.ok(result.misconception.hint);
 });
 
+test("divide-first inverse-operation error gets a correction based on the submitted equation", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response("{}", { status: 200 })
+  );
+
+  const result = await misconceptionService.analyzeAnswer({
+    questionId: "dp_003",
+    studentAnswer: "3",
+    work: "4(x-2)=20\nx-2=5\nx-2=5\nx=3"
+  });
+
+  assert.equal(result.misconception.detected, true);
+  assert.equal(result.misconception.type, "wrong_inverse_op");
+  assert.equal(result.misconception.source, "rules");
+  assert.equal(result.misconception.incorrectStep, "x=3");
+  assert.equal(result.misconception.correctStep, "x = 7");
+  assert.match(result.misconception.explanation, /add 2 to both sides/i);
+});
+
+test("valid divide-first working is not flagged", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response("{}", { status: 200 })
+  );
+
+  const result = await misconceptionService.analyzeAnswer({
+    questionId: "dp_003",
+    studentAnswer: "7",
+    work: "4(x-2)=20\nx-2=5\nx-2=5\nx=5+2\nx=7"
+  });
+
+  assert.equal(result.correct, true);
+  assert.equal(result.misconception.detected, false);
+});
+
 test("incorrect answers without written work ask for steps rather than guessing", async (t) => {
   useMemoryStore(t);
   t.mock.method(llmReviewService, "reviewSubmission", async () => null);
@@ -478,8 +518,179 @@ test("LLM prompt requests only work review using the five allowed step labels", 
     requestBody.messages[0].content,
     /Allowed labels: sign_error, wrong_inverse_op, one_sided_op, combining_unlike_terms, arithmetic_slip/
   );
+  assert.deepEqual(requestBody.response_format, { type: "json_object" });
   assert.match(requestBody.messages[0].content, /written solution steps only/);
   assert.match(requestBody.messages[0].content, /final-answer correctness is checked separately/);
+});
+
+test("Gemini model configuration uses native generateContent even if the legacy URL is malformed", async (t) => {
+  const originalEnv = {
+    LLM_API_URL: process.env.LLM_API_URL,
+    LLM_API_KEY: process.env.LLM_API_KEY,
+    LLM_MODEL: process.env.LLM_MODEL,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL
+  };
+  process.env.LLM_API_URL = "not a valid URL\\r\\n";
+  process.env.LLM_API_KEY = "test-gemini-key";
+  process.env.LLM_MODEL = "gemini-3.8-flash";
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_MODEL;
+  t.after(() => {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  let requestedUrl;
+  let requestOptions;
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    requestedUrl = String(url);
+    requestOptions = options;
+    return new Response(JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [{ text: JSON.stringify({
+            step_label: "wrong_inverse_op",
+            incorrect_step: "3x=18 -> x=54",
+            correct_step: "3x=18 -> x=6",
+            step_explanation: "Divide both sides by 3.",
+            confidence: 0.97
+          }) }]
+        }
+      }]
+    }), { status: 200 });
+  });
+
+  const review = await llmReviewService.reviewSubmission({
+    question: "Solve 3x=18",
+    studentAnswer: "54",
+    correctAnswer: "6",
+    work: "3x=18 -> x=54"
+  });
+
+  assert.equal(requestedUrl, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent");
+  assert.equal(requestOptions.headers["x-goog-api-key"], "test-gemini-key");
+  assert.equal(requestOptions.headers.Authorization, undefined);
+  const body = JSON.parse(requestOptions.body);
+  assert.equal(body.generationConfig.responseMimeType, "application/json");
+  assert.deepEqual(body.generationConfig.responseSchema.required, [
+    "step_label",
+    "incorrect_step",
+    "correct_step",
+    "step_explanation",
+    "confidence"
+  ]);
+  assert.equal(body.generationConfig.responseSchema.properties.step_label.nullable, true);
+  assert.match(body.systemInstruction.parts[0].text, /final-answer correctness is checked separately/);
+  assert.deepEqual(review, {
+    label: "wrong_inverse_op",
+    incorrectStep: "3x=18 -> x=54",
+    correctStep: "3x=18 -> x=6",
+    explanation: "Divide both sides by 3.",
+    confidence: 0.97
+  });
+});
+
+test("malformed Gemini JSON fails safely and deterministic diagnosis continues", async (t) => {
+  const originalEnv = {
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
+    LLM_API_KEY: process.env.LLM_API_KEY,
+    LLM_API_URL: process.env.LLM_API_URL,
+    LLM_MODEL: process.env.LLM_MODEL
+  };
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_MODEL = "gemini-2.5-flash";
+  delete process.env.LLM_API_KEY;
+  delete process.env.LLM_API_URL;
+  delete process.env.LLM_MODEL;
+  t.after(() => {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [{ text: '{"step_label":"wrong_inverse_op","incorrect_step":"x=10-4' }]
+        }
+      }]
+    }), { status: 200 })
+  );
+
+  const result = await misconceptionService.analyzeAnswer({
+    questionId: "io_002",
+    studentAnswer: "6",
+    work: "x-4=10\nx=10-4\nx=6"
+  });
+
+  assert.equal(result.misconception.detected, true);
+  assert.equal(result.misconception.type, "wrong_inverse_op");
+  assert.equal(result.misconception.source, "rules");
+  assert.equal(result.misconception.correctStep, "x = 14");
+});
+
+test("Gemini retries one transient 503 and includes provider details when it persists", async (t) => {
+  const originalEnv = {
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
+    LLM_API_KEY: process.env.LLM_API_KEY,
+    LLM_API_URL: process.env.LLM_API_URL,
+    LLM_MODEL: process.env.LLM_MODEL
+  };
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_MODEL = "gemini-3.8-flash";
+  delete process.env.LLM_API_KEY;
+  delete process.env.LLM_API_URL;
+  delete process.env.LLM_MODEL;
+  t.after(() => {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    if (calls === 1 || calls > 2) {
+      return new Response(JSON.stringify({ error: { status: "UNAVAILABLE", message: "temporary capacity issue" } }), { status: 503 });
+    }
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: JSON.stringify({
+        step_label: "wrong_inverse_op",
+        incorrect_step: "3x=18 -> x=54",
+        correct_step: "3x=18 -> x=6",
+        step_explanation: "Divide both sides by 3.",
+        confidence: 0.95
+      }) }] } }]
+    }), { status: 200 });
+  });
+
+  const review = await llmReviewService.reviewSubmission({
+    question: "Solve 3x=18",
+    studentAnswer: "54",
+    correctAnswer: "6",
+    work: "3x=18 -> x=54"
+  });
+  assert.equal(calls, 2);
+  assert.equal(review.label, "wrong_inverse_op");
+
+  await assert.rejects(
+    llmReviewService.reviewSubmission({
+      question: "Solve 3x=18",
+      studentAnswer: "54",
+      correctAnswer: "6",
+      work: "3x=18 -> x=54"
+    }),
+    /Gemini API returned HTTP 503: temporary capacity issue/
+  );
+  assert.equal(calls, 4);
 });
 
 test("LLM step labels are validated", async (t) => {

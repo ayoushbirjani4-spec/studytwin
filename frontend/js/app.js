@@ -36,6 +36,7 @@ const state = {
   question: null,
   questionNumber: 0,
   answered: false,
+  targetedPractice: null,
   stats: {
     attempts: 0,
     correct: 0,
@@ -93,9 +94,12 @@ async function api(path, options = {}) {
   }
 
   if (!response.ok || data.success === false) {
-    throw new Error(
+    const error = new Error(
       data.error || `API returned HTTP ${response.status}`
     );
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
 
   return data;
@@ -152,13 +156,28 @@ function renderQuestion(question) {
 
   $("feedbackPanel").classList.add("hidden");
 
-  const progress =
-    Math.min(100, ((state.questionNumber - 1) % 5 + 1) * 20);
+  const sessionLength = state.targetedPractice?.active ? 3 : 5;
+  const progress = Math.min(
+    100,
+    (((state.questionNumber - 1) % sessionLength) + 1) *
+      (100 / sessionLength)
+  );
 
   $("progressBar").style.width = `${progress}%`;
 
   $("progressText").textContent =
-    `Question ${((state.questionNumber - 1) % 5) + 1} of 5`;
+    `Question ${((state.questionNumber - 1) % sessionLength) + 1} of ${sessionLength}`;
+
+  const targetedBanner = $("targetedPracticeBanner");
+  if (state.targetedPractice?.active) {
+    targetedBanner.textContent =
+      `Focused practice: ${state.targetedPractice.label}. Three questions build from easier to harder.`;
+    targetedBanner.classList.remove("hidden");
+  } else {
+    targetedBanner.classList.add("hidden");
+  }
+  $("targetedPracticeResult").classList.add("hidden");
+  $("nextButton").textContent = "Continue to Next Question →";
 
   updateSidebar();
   hideError();
@@ -189,7 +208,7 @@ async function loadConcepts() {
   }
 }
 
-async function startSession() {
+async function startSession({ misconceptionType = null } = {}) {
   const concept = $("conceptSelect").value;
   const difficulty =
     Number($("difficultySelect").value);
@@ -210,12 +229,20 @@ async function startSession() {
       body: JSON.stringify({
         studentId: state.studentId,
         concept,
-        difficulty
+        difficulty,
+        ...(misconceptionType ? { misconceptionType } : {})
       })
     });
 
+    if (data.persisted !== true) {
+      throw new Error(
+        "StudyTwin could not confirm that your session was saved. Please try again."
+      );
+    }
+
     state.concept = data.concept;
     state.difficulty = data.difficulty;
+    state.targetedPractice = data.targetedPractice || null;
     state.questionNumber = 1;
 
     state.stats = {
@@ -420,6 +447,19 @@ function renderFeedback(data) {
       ? "Answer recorded."
       : "Answer recorded — review the feedback below.";
 
+  const targetedResult = $("targetedPracticeResult");
+  if (data.targetedPractice) {
+    const target = data.targetedPractice;
+    state.targetedPractice = target;
+    targetedResult.textContent = target.completed
+      ? `Focused practice complete: ${target.targetErrors} ${target.label.toLowerCase()} error${target.targetErrors === 1 ? "" : "s"} in ${target.attempts} questions.`
+      : `Focused practice: ${target.attempts} of 3 questions completed.`;
+    targetedResult.classList.remove("hidden");
+    if (target.completed) {
+      $("nextButton").textContent = "Return to mixed practice";
+    }
+  }
+
   $("feedbackPanel").classList.remove("hidden");
 
   window.scrollTo({
@@ -486,17 +526,16 @@ async function submitAnswer() {
       }
     );
 
+    if (data.persisted !== true) {
+      throw new Error(
+        "StudyTwin could not confirm that your answer and progress were fully saved. Check your profile before retrying."
+      );
+    }
+
     renderFeedback(data);
   } catch (error) {
-    // If the server explicitly says the answer was not persisted
-    // (e.g. MongoDB unavailable), make that clear to the student.
-    const message =
-      error.message.includes("could not save") ||
-      error.message.includes("503")
-        ? "Your answer could not be saved right now — the server is temporarily unavailable. Please try again in a moment."
-        : error.message;
-
-    showError(message);
+    showError(error.message ||
+      "StudyTwin could not confirm that your answer was fully saved. Check your profile before retrying.");
 
     $("submitButton").disabled = false;
 
@@ -505,16 +544,26 @@ async function submitAnswer() {
   }
 }
 
-function continueToNext() {
+async function continueToNext() {
   const nextQuestion =
     window.lastResponse?.nextQuestion;
+  const targetedComplete = window.lastResponse?.targetedPractice?.completed;
 
   if (!nextQuestion) {
+    if (targetedComplete) {
+      await openDashboard();
+      return;
+    }
     showError(
       "The server did not provide another question."
     );
 
     return;
+  }
+
+  if (targetedComplete) {
+    state.targetedPractice = null;
+    state.questionNumber = 0;
   }
 
   state.questionNumber += 1;
@@ -639,6 +688,11 @@ async function loadDashboard() {
       nextCard.dataset.concept = nextStep.concept;
       nextCard.dataset.difficulty =
         String(nextStep.recommendedDifficulty || 1);
+      nextCard.dataset.misconceptionType =
+        nextStep.topMistakeCount >= 2 ? nextStep.topMistakeType || "" : "";
+      $("practiceSkillButton").textContent = nextStep.topMistakeCount >= 2
+        ? `Practice ${nextStep.topMistakeLabel} →`
+        : "Practice this skill →";
       nextCard.classList.remove("hidden");
     } else {
       nextCard.classList.add("hidden");
@@ -692,6 +746,9 @@ async function loadDashboard() {
                 ${m.concept
                   ? `<span class="mistake-concept">${escapeHtml(conceptName(m.concept))}</span>`
                   : ""}
+                ${m.count >= 2 && m.concept
+                  ? `<button class="practice-mistake-button" data-concept="${escapeHtml(m.concept)}" data-misconception="${escapeHtml(m.type)}">Practice this mistake</button>`
+                  : ""}
               </span>
               <span class="mistake-count">${m.count}×</span>
             </div>
@@ -701,6 +758,30 @@ async function loadDashboard() {
       mistakesCard.classList.remove("hidden");
     } else {
       mistakesCard.classList.add("hidden");
+    }
+
+    const trendRows = profile.misconceptionTrends || [];
+    const trendCard = $("misconceptionTrendsCard");
+    if (trendRows.length > 0) {
+      $("misconceptionTrendsList").innerHTML = trendRows.map((trend) => {
+        const rates = trend.previous && trend.recent
+          ? `Previous 10: ${Math.round(trend.previous.rate * 100)}% (${trend.previous.errors}/10) · Last 10: ${Math.round(trend.recent.rate * 100)}% (${trend.recent.errors}/10)`
+          : `Based on ${profile.trendAttemptCount || 0} saved attempt records; 20 are needed for a comparison.`;
+        return `<div class="trend-row"><div><span class="trend-label">${escapeHtml(trend.label)}</span><span class="trend-rates">${rates}</span></div><span class="trend-status">${escapeHtml(trend.status)}</span></div>`;
+      }).join("");
+      trendCard.classList.remove("hidden");
+    } else {
+      trendCard.classList.add("hidden");
+    }
+
+    const targetedSummary = profile.targetedPractice;
+    const targetedSummaryCard = $("targetedPracticeSummaryCard");
+    if (targetedSummary && targetedSummary.attempts > 0) {
+      $("targetedPracticeSummary").textContent =
+        `${labelFromType(targetedSummary.type)}: ${targetedSummary.targetErrors} matching errors in ${targetedSummary.attempts} focused questions (${Math.round((targetedSummary.targetErrors / targetedSummary.attempts) * 100)}%).`;
+      targetedSummaryCard.classList.remove("hidden");
+    } else {
+      targetedSummaryCard.classList.add("hidden");
     }
 
     // Recent attempts
@@ -767,7 +848,24 @@ async function practiceRecommendedSkill() {
   $("dashboardPanel").classList.add("hidden");
   $("startPanel").classList.add("hidden");
 
-  await startSession();
+  await startSession({
+    misconceptionType: card?.dataset.misconceptionType || null
+  });
+}
+
+function labelFromType(type) {
+  return String(type || "misconception")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, character => character.toUpperCase());
+}
+
+async function practiceMisconception(concept, misconceptionType) {
+  if (!concept || !misconceptionType) return;
+  $("conceptSelect").value = concept;
+  state.concept = concept;
+  $("dashboardPanel").classList.add("hidden");
+  $("startPanel").classList.add("hidden");
+  await startSession({ misconceptionType });
 }
 
 async function openDashboard() {
@@ -800,13 +898,13 @@ function backToPractice() {
 
 async function resetStudent() {
   const confirmed = confirm(
-    "Reset this student's saved session data?"
+    "Permanently delete this browser session's progress and all saved answer and working history? This cannot be undone."
   );
 
   if (!confirmed) return;
 
   try {
-    await api(
+    const result = await api(
       `/api/students/${encodeURIComponent(
         state.studentId
       )}`,
@@ -815,12 +913,19 @@ async function resetStudent() {
       }
     );
 
+    if (result.deleted !== true || result.reset?.complete !== true) {
+      throw new Error(
+        "StudyTwin could not confirm that all progress and answer history were deleted. Retry reset to finish."
+      );
+    }
+
     localStorage.removeItem("studytwin_student_id");
     localStorage.removeItem("studytwin_student_token");
 
     window.location.reload();
   } catch (error) {
-    showError(error.message);
+    showError(error.message ||
+      "Reset could not be confirmed. Some or all session data may already have been removed; retry reset to confirm completion.");
   }
 }
 
@@ -879,6 +984,15 @@ $("practiceSkillButton").addEventListener(
   "click",
   practiceRecommendedSkill
 );
+
+$("commonMistakesList").addEventListener("click", (event) => {
+  const button = event.target.closest(".practice-mistake-button");
+  if (!button) return;
+  practiceMisconception(
+    button.dataset.concept,
+    button.dataset.misconception
+  );
+});
 
 $("backToPracticeButton").addEventListener(
   "click",

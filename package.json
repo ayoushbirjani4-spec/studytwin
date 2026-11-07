@@ -8,6 +8,8 @@
     "start": "npm --workspace=server start",
     "test": "npm --workspace=server test",
     "eval": "npm --workspace=server run eval",
+    "check:ml": "npm --workspace=server run check:ml",
+    "check:gemini": "npm --workspace=server run check:gemini",
     "export-attempts": "npm --workspace=server run export-attempts"
   }
 }

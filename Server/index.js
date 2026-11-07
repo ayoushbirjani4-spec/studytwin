@@ -29,6 +29,7 @@ const studySessionService = require("./Services/studySessionService");
 const studentStore = require("./Services/studentStore");
 const attemptLogStore = require("./Services/attemptLogStore");
 const { createAnswerRateLimiter } = require("./middleware/rateLimit");
+const { serviceStatus } = require("./middleware/serviceErrors");
 
 const answerRateLimiter = createAnswerRateLimiter();
 
@@ -39,6 +40,11 @@ const answerRateLimiter = createAnswerRateLimiter();
 
 const app = express();
 
+const trustedProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS || "0", 10);
+app.set("trust proxy", Number.isInteger(trustedProxyHops) && trustedProxyHops > 0
+    ? trustedProxyHops
+    : false);
+
 const port =
     Number(process.env.PORT) || 3000;
 
@@ -47,7 +53,17 @@ const port =
 // MIDDLEWARE
 // ============================================================
 
-app.use(cors());
+const allowedOrigins = new Set(
+    (process.env.CORS_ORIGINS || "")
+        .split(",")
+        .map(origin => origin.trim())
+        .filter(Boolean)
+);
+app.use(cors({
+    origin(origin, callback) {
+        callback(null, !origin || allowedOrigins.has(origin));
+    }
+}));
 
 app.use(express.json());
 
@@ -228,14 +244,17 @@ app.post(
                 error
             );
 
-            const statusCode = error.statusCode || 500;
+            const statusCode = serviceStatus(error);
             res.status(statusCode).json({
 
                 success: false,
 
                 error: statusCode < 500
                     ? error.message
-                    : "Unable to start a study session."
+                    : statusCode === 503
+                        ? "The session could not be saved because the database is unavailable."
+                        : "Unable to start a study session.",
+                persisted: false
             });
 
         }
@@ -293,23 +312,8 @@ app.post(
             // If MongoDB (or a required service) is unavailable, return
             // 503 so the frontend can show a meaningful message instead
             // of presenting it as a student input error.
-            const isUnavailable =
-                [
-                    "MongoServerSelectionError",
-                    "MongoNetworkError",
-                    "MongoNetworkTimeoutError"
-                ].includes(error.name) ||
-                error.message &&
-                (
-                    error.message.includes("ECONNREFUSED") ||
-                    error.message.includes("ENOTFOUND") ||
-                    error.message.includes("MongoServerSelectionError") ||
-                    error.message.includes("topology was destroyed") ||
-                    error.message.includes("connection timed out")
-                );
             const statusCode =
-                error.statusCode ||
-                (isUnavailable ? 503 : 500);
+                serviceStatus(error);
 
             res.status(statusCode).json({
 
@@ -318,10 +322,11 @@ app.post(
                 error: statusCode < 500
                     ? error.message
                     : statusCode === 503
-                        ? "The server could not save your answer right now. Please try again in a moment."
+                        ? "We could not confirm that your answer and progress were fully saved. The submission may be partially recorded; check your profile before retrying."
                         : "Unable to process or save your answer.",
 
-                persisted: false
+                persisted: false,
+                persistenceState: "unconfirmed"
             });
 
         }
@@ -391,12 +396,15 @@ app.get(
                 error
             );
 
-            return res.status(500).json({
+            const statusCode = serviceStatus(error);
+            return res.status(statusCode).json({
 
                 success: false,
 
                 error:
-                    "Unable to retrieve student profile."
+                    statusCode === 503
+                        ? "The student profile is temporarily unavailable because the database is unavailable."
+                        : "Unable to retrieve student profile."
             });
 
         }
@@ -468,12 +476,15 @@ app.get(
                 error
             );
 
-            return res.status(500).json({
+            const statusCode = serviceStatus(error);
+            return res.status(statusCode).json({
 
                 success: false,
 
                 error:
-                    "Unable to retrieve concept profile."
+                    statusCode === 503
+                        ? "The concept profile is temporarily unavailable because the database is unavailable."
+                        : "Unable to retrieve concept profile."
             });
 
         }
@@ -583,12 +594,15 @@ app.get(
                 error
             );
 
-            res.status(500).json({
+            const statusCode = serviceStatus(error);
+            res.status(statusCode).json({
 
                 success: false,
 
                 error:
-                    "Unable to retrieve student."
+                    statusCode === 503
+                        ? "The student profile is temporarily unavailable because the database is unavailable."
+                        : "Unable to retrieve student."
             });
 
         }
@@ -627,9 +641,20 @@ app.delete(
                 });
             }
 
+            if (!reset.complete) {
+                return res.status(500).json({
+                    success: false,
+                    error: "Reset did not remove all session data. Retry reset to finish deleting it.",
+                    reset,
+                    deleted: false
+                });
+            }
+
             res.json({
 
                 success: true,
+
+                deleted: true,
 
                 reset
 
@@ -642,12 +667,22 @@ app.delete(
                 error
             );
 
-            res.status(500).json({
+            const statusCode = serviceStatus(error);
+            res.status(statusCode).json({
 
                 success: false,
 
                 error:
-                    error.message
+                    statusCode === 503
+                        ? "Reset could not be confirmed because the database is unavailable. Some or all session data may already have been removed; retry reset to confirm completion."
+                        : "Reset could not be confirmed. Some or all session data may already have been removed; retry reset to confirm completion.",
+                reset: error.resetResult || {
+                    complete: false,
+                    deletedProgress: false,
+                    deletedAttempts: false,
+                    attemptCount: null
+                },
+                deleted: false
             });
 
         }
@@ -705,14 +740,14 @@ app.get(
 
                 const headers = blind
                     ? ["id","createdAt","studentId","questionId","concept","difficulty","studentAnswer","work","answerCorrect","gold"]
-                    : ["id","createdAt","studentId","questionId","concept","difficulty","studentAnswer","work","answerCorrect","demonstratedCorrect","misconceptionDetected","misconceptionType","misconceptionSource"];
+                    : ["id","createdAt","studentId","questionId","concept","difficulty","studentAnswer","work","answerCorrect","demonstratedCorrect","misconceptionDetected","misconceptionType","misconceptionSource","targetedPracticeType"];
 
                 const lines = [headers.join(",")];
 
                 for (const row of chronological) {
                     const values = blind
                         ? [row._id, row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt, row.studentId, row.questionId, row.concept, row.difficulty, row.studentAnswer, row.work, row.answerCorrect, ""]
-                        : [row._id, row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt, row.studentId, row.questionId, row.concept, row.difficulty, row.studentAnswer, row.work, row.answerCorrect, row.demonstratedCorrect, row.misconceptionDetected, row.misconceptionType, row.misconceptionSource];
+                        : [row._id, row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt, row.studentId, row.questionId, row.concept, row.difficulty, row.studentAnswer, row.work, row.answerCorrect, row.demonstratedCorrect, row.misconceptionDetected, row.misconceptionType, row.misconceptionSource, row.targetedPracticeType];
                     lines.push(values.map(csvEscape).join(","));
                 }
 
@@ -725,7 +760,7 @@ app.get(
 
             // JSONL
             const data = blind
-                ? chronological.map(({ misconceptionType, misconceptionSource, demonstratedCorrect, misconceptionDetected, ...rest }) => ({ ...rest, gold: "" }))
+                ? chronological.map(({ misconceptionType, misconceptionSource, targetedPracticeType, demonstratedCorrect, misconceptionDetected, ...rest }) => ({ ...rest, gold: "" }))
                 : chronological;
 
             res.setHeader("Content-Type", "application/x-ndjson");
@@ -736,9 +771,12 @@ app.get(
 
             console.error("Export error:", error);
 
-            res.status(500).json({
+            const statusCode = serviceStatus(error);
+            res.status(statusCode).json({
                 success: false,
-                error: "Unable to export attempts."
+                error: statusCode === 503
+                    ? "Attempt history is temporarily unavailable because the database is unavailable."
+                    : "Unable to export attempts."
             });
         }
     }

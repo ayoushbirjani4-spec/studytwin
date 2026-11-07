@@ -31,6 +31,13 @@
     .mistake-label{font-weight:650}
     .mistake-concept{display:block;color:#8a94a6;font-size:11px;margin-top:2px}
     .mistake-count{background:#fff7e8;color:#8a5800;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:750}
+    .trend-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
+    .trend-row:last-child{border-bottom:none}
+    .trend-label{font-size:13px;font-weight:700}
+    .trend-rates{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+    .trend-status{font-size:11px;font-weight:750;color:var(--primary)}
+    .practice-mistake-button{margin-top:7px;padding:5px 9px;border:1px solid #d9d8ff;border-radius:8px;background:#fff;color:var(--primary);font-size:11px;font-weight:700}
+    .targeted-practice-banner{margin:0 0 14px;padding:10px 12px;border:1px solid #d9d8ff;border-radius:10px;background:#f7f7ff;color:var(--primary);font-size:12px}
 
     /* Recent attempts table */
     .attempts-table{width:100%;border-collapse:collapse;font-size:12px}
@@ -110,6 +117,7 @@
 
         <div class="question-card">
           <div class="question-topline"><span class="concept-chip" id="questionConcept">Distributive Property</span><span class="question-id" id="questionId" hidden></span></div>
+          <p id="targetedPracticeBanner" class="targeted-practice-banner hidden"></p>
           <h2 id="questionText">Loading question...</h2>
           <p class="question-helper">Take your time. Showing your steps helps StudyTwin understand how you learn.</p>
         </div>
@@ -168,6 +176,8 @@
             <p id="solutionExplanation"></p>
           </div>
 
+          <p id="targetedPracticeResult" class="muted hidden"></p>
+
           <button id="nextButton" class="primary-button next-button">Continue to Next Question <span>→</span></button>
         </section>
       </section>
@@ -201,6 +211,18 @@
         <div id="commonMistakesCard" class="profile-card hidden">
           <div class="card-title">Common mistakes</div>
           <div id="commonMistakesList"></div>
+        </div>
+
+        <div id="misconceptionTrendsCard" class="profile-card hidden">
+          <div class="card-title">Misconception trends</div>
+          <p class="muted">Each rate counts the selected mistake in the last 10 attempts versus the 10 before them.</p>
+          <div id="misconceptionTrendsList"></div>
+        </div>
+
+        <div id="targetedPracticeSummaryCard" class="profile-card hidden">
+          <div class="card-title">Targeted practice results</div>
+          <p id="targetedPracticeSummary" class="muted"></p>
+          <p id="targetedPracticeImpact" class="muted"></p>
         </div>
 
         <div id="recentAttemptsCard" class="profile-card hidden">

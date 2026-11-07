@@ -50,7 +50,8 @@ test("Regression Target 2: subtracted coefficient instead of dividing diagnosed 
   assert.equal(result.misconception.type, "wrong_inverse_op");
 });
 
-test("Regression Target 3: skipped step with wrong evaluated result diagnosed as arithmetic_slip (eb_002)", async (t) => {
+// x-6=2 -> x=-4 is exactly 2-6: subtracting instead of adding, even with the step skipped.
+test("Regression Target 3: skipped step that subtracts instead of adds is diagnosed as wrong_inverse_op (eb_002)", async (t) => {
   t.mock.method(llmReviewService, "reviewSubmission", async () => null);
 
   const result = await misconceptionService.analyzeAnswer({
@@ -61,7 +62,7 @@ test("Regression Target 3: skipped step with wrong evaluated result diagnosed as
 
   assert.equal(result.correct, false);
   assert.equal(result.misconception.detected, true);
-  assert.equal(result.misconception.type, "arithmetic_slip");
+  assert.equal(result.misconception.type, "wrong_inverse_op");
 });
 
 test("Correct final answer with an invalid distribution step does not demonstrate mastery across arrow and newline work when LLM review is unavailable", async (t) => {

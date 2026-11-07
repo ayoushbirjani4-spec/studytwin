@@ -1,4 +1,5 @@
 import pickle
+from pathlib import Path
 import pandas as pd
 
 from step_features import (
@@ -8,7 +9,7 @@ from step_features import (
 )
 
 
-MODEL_PATH = "step_misconception_model.pkl"
+MODEL_PATH = Path(__file__).resolve().parent / "step_misconception_model.pkl"
 
 
 # ------------------------------------------------------------

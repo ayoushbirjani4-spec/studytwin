@@ -51,6 +51,9 @@ async function logAttempt(entry) {
     misconceptionDetected: Boolean(entry.misconceptionDetected),
     misconceptionType: entry.misconceptionType ?? null,
     misconceptionSource: entry.misconceptionSource ?? null,
+    targetedPracticeType: entry.targetedPracticeType ?? null,
+    targetedPracticeSessionId: entry.targetedPracticeSessionId ?? null,
+    targetedPracticePhase: entry.targetedPracticePhase ?? null,
     createdAt: new Date()
   };
 
@@ -84,6 +87,27 @@ async function listAttempts({ limit = 5000, studentId } = {}) {
     .toArray();
 }
 
+async function deleteAttemptsForStudent(studentId) {
+  if (!studentId) {
+    throw new Error("studentId is required to delete attempt history.");
+  }
+
+  if (useMemoryStore()) {
+    let deletedCount = 0;
+    for (let index = memoryAttempts.length - 1; index >= 0; index--) {
+      if (memoryAttempts[index].studentId === studentId) {
+        memoryAttempts.splice(index, 1);
+        deletedCount++;
+      }
+    }
+    return deletedCount;
+  }
+
+  const collection = await getCollection();
+  const result = await collection.deleteMany({ studentId });
+  return result.deletedCount || 0;
+}
+
 function clearMemoryAttempts() {
   memoryAttempts.length = 0;
 }
@@ -91,6 +115,7 @@ function clearMemoryAttempts() {
 module.exports = {
   logAttempt,
   listAttempts,
+  deleteAttemptsForStudent,
   clearMemoryAttempts,
   useMemoryStore
 };

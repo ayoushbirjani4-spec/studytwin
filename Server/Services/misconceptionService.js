@@ -1782,14 +1782,6 @@ function classifyStepError(from, to) {
 
         // Added/subtracted the opposite amount on each side
         if (!linZero(dL) && linNear(dL.a, -dR.a) && linNear(dL.b, -dR.b)) {
-            const rightRaw = t.split("=")[1]?.trim() || "";
-            if (
-                linNear(L1.a, 1) && linNear(L2.a, 1) &&
-                linNear(L2.b, 0) && linNear(R2.a, 0) &&
-                /^[-+]?\d+(?:\.\d+)?$/.test(rightRaw)
-            ) {
-                return "arithmetic_slip";
-            }
             return "wrong_inverse_op";
         }
 
@@ -1912,8 +1904,11 @@ function findFirstStepError(work) {
 function buildStepDiagnosis(question, stepError, finalAnswerCorrect) {
 
     const info = STEP_LABELS[stepError.label];
-    const correctStep =
+    const canonicalCorrectStep =
         getCanonicalCorrectStep(question, stepError.from);
+    const correctStep =
+        canonicalCorrectStep ||
+        getVerifiedAlgebraicCorrection(stepError.from);
 
     const prefix = finalAnswerCorrect
         ? "Your final answer is right, but one of your steps is not: "
@@ -1929,9 +1924,11 @@ function buildStepDiagnosis(question, stepError, finalAnswerCorrect) {
         incorrectStep: stepError.to,
         previousStep: stepError.from,
         correctStep,
-        explanation: correctStep
-            ? `From ${stepError.from}, the matching worked-solution step is ${correctStep}.`
-            : null,
+        explanation: canonicalCorrectStep
+            ? `From ${stepError.from}, the matching worked-solution step is ${canonicalCorrectStep}.`
+            : correctStep
+                ? getAlgebraicCorrectionExplanation(stepError.from, correctStep)
+                : null,
         source: "rules"
     };
 }
@@ -1941,12 +1938,51 @@ function getCanonicalCorrectStep(question, fromStep) {
         .filter(step => splitEquation(step));
 
     for (let index = 0; index < equationSteps.length - 1; index++) {
-        if (equationsEquivalent(fromStep, equationSteps[index])) {
-            return equationSteps[index + 1];
+        if (normalizeEquation(fromStep) === normalizeEquation(equationSteps[index])) {
+            const nextStep = equationSteps[index + 1];
+            return equationsEquivalent(fromStep, nextStep)
+                ? nextStep
+                : null;
         }
     }
 
     return null;
+}
+
+function getVerifiedAlgebraicCorrection(fromStep) {
+    const equation = parseEquation(fromStep);
+    if (!equation || linNear(equation.a, 0)) {
+        return null;
+    }
+
+    const solution = -equation.b / equation.a;
+    if (!Number.isFinite(solution)) {
+        return null;
+    }
+
+    const roundedSolution = Number(solution.toFixed(8));
+    const correction = `x = ${roundedSolution}`;
+    return equationsEquivalent(fromStep, correction) ? correction : null;
+}
+
+function getAlgebraicCorrectionExplanation(fromStep, correctStep) {
+    const sides = splitEquation(fromStep);
+    if (!sides) {
+        return `Solve the preceding equation to get ${correctStep}.`;
+    }
+
+    const left = safeParse(sides.left);
+    const right = safeParse(sides.right);
+    if (!left || !right || !linNear(right.a, 0)) {
+        return `Solve the preceding equation to get ${correctStep}.`;
+    }
+
+    if (linNear(left.a, 1) && !linNear(left.b, 0)) {
+        const operation = left.b < 0 ? "Add" : "Subtract";
+        return `${operation} ${Math.abs(left.b)} to both sides.`;
+    }
+
+    return `Solve the preceding equation to get ${correctStep}.`;
 }
 
 function diagnoseFromLlmReview({

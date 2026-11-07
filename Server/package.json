@@ -7,6 +7,8 @@
     "start": "node index.js",
     "test": "node --require ./test/setup.js --test",
     "eval": "node eval/run_eval.js",
+    "check:ml": "node scripts/check_ml_service.js",
+    "check:gemini": "node scripts/check_gemini.js",
     "export-attempts": "node scripts/export_attempts.js"
   },
   "keywords": [],

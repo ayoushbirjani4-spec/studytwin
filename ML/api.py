@@ -13,9 +13,6 @@ API documentation:
 
 from pathlib import Path
 import sys
-from predict_step import predict_step
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
 
 
 # ============================================================
@@ -27,6 +24,10 @@ BASE_DIR = Path(__file__).resolve().parent
 # Make sure Python can find predict.py
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+
+from predict_step import predict_step
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 
 # ============================================================

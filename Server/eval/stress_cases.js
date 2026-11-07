@@ -28,7 +28,7 @@ module.exports = [
   C("dp_003","4.5","4(x-2)=20\n4x-2=20\n4x=18\nx=4.5","failed_to_distribute",false,"two errors: first one counts"),
   C("dp_002","7","3x+6=15\n3x=21\nx=7","wrong_inverse_op",false,"starts after expanding"),
   C("io_002","6","x - 4 = 10 -> x = 10 - 4 -> x = 6","wrong_inverse_op",false,"arrow chain on one line"),
-  C("eb_002","-4","x-6=2\nx=-4","arithmetic_slip",false,"skipped step, wrong result"),
+  C("eb_002","-4","x-6=2\nx=-4","wrong_inverse_op",false,"skipped step: subtracted 6 instead of adding"),
 
   // ---- no evidence ----
   C("dp_002","5","I dont know","no_evidence"),

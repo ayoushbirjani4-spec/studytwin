@@ -14,5 +14,7 @@ screenshot_*.png
 e2e_screenshot*.png
 **/model.pkl
 model/
+__pycache__/
+*.py[cod]
 test_e2e_browser.js
 test_all_five_scenarios_browser.js

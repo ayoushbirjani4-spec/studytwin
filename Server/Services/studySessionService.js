@@ -29,6 +29,7 @@ const misconceptionService = require("./misconceptionService");
 const mlService = require("./mlService");
 const studentStore = require("./studentStore");
 const attemptLogStore = require("./attemptLogStore");
+const { randomUUID } = require("node:crypto");
 
 
 // ============================================================
@@ -370,6 +371,22 @@ async function recordAnswer({
         }
     }
 
+    const targetPractice = student.targetedPractice;
+    const targetedPracticeForAnswer = Boolean(
+        targetPractice?.active && targetPractice.concept === realQuestion.concept
+    );
+    if (targetedPracticeForAnswer) {
+        targetPractice.attempts++;
+        if (analysis.misconception?.type === targetPractice.type) {
+            targetPractice.targetErrors++;
+        }
+        if (targetPractice.attempts >= 3) {
+            targetPractice.active = false;
+            targetPractice.completed = true;
+            targetPractice.completedAt = new Date().toISOString();
+        }
+    }
+
 
     state.previousCorrect =
         demonstratedCorrect;
@@ -416,9 +433,6 @@ async function recordAnswer({
 
         state.recentQuestionIds.shift();
     }
-
-    await studentStore.save(student);
-
 
     // ========================================================
     // CALCULATE PERFORMANCE
@@ -514,8 +528,27 @@ async function recordAnswer({
     // SELECT NEXT QUESTION
     // ========================================================
 
-    const nextQuestion =
-        questionService.getNextQuestion({
+    let nextQuestion = null;
+    if (targetedPracticeForAnswer) {
+        if (targetPractice.active) {
+            nextQuestion = questionService.getTargetedQuestion({
+                concept: realQuestion.concept,
+                usedQuestionIds: targetPractice.questionIds || []
+            });
+            if (nextQuestion) {
+                targetPractice.questionIds.push(nextQuestion.id);
+                state.recentQuestionIds.push(nextQuestion.id);
+                if (state.recentQuestionIds.length > MAX_RECENT_QUESTIONS) {
+                    state.recentQuestionIds.shift();
+                }
+            }
+        } else if (targetPractice.completed) {
+            nextQuestion = questionService.getNextMixedQuestion({
+                recentQuestionIds: state.recentQuestionIds
+            });
+        }
+    } else {
+        nextQuestion = questionService.getNextQuestion({
 
             concept:
                 realQuestion.concept,
@@ -526,26 +559,34 @@ async function recordAnswer({
             recentQuestionIds:
                 state.recentQuestionIds
         });
+    }
+
+    // Record the raw submission first. If this write or the progress write
+    // fails, the request fails and the interface will not claim it was saved.
+    await attemptLogStore.logAttempt({
+        studentId,
+        questionId: realQuestion.id,
+        concept: realQuestion.concept,
+        difficulty: realQuestion.difficulty,
+        studentAnswer,
+        work,
+        answerCorrect: Boolean(analysis.correct),
+        demonstratedCorrect,
+        misconceptionDetected,
+        misconceptionType: analysis.misconception?.type ?? null,
+        misconceptionSource: analysis.misconception?.source ?? null,
+        targetedPracticeType: targetedPracticeForAnswer
+            ? targetPractice.type
+            : null,
+        targetedPracticeSessionId: targetPractice?.sessionId || null,
+        targetedPracticePhase: targetedPracticeForAnswer
+            ? "focused"
+            : targetPractice?.completed && targetPractice.concept === realQuestion.concept
+                ? "follow_up"
+                : null
+    });
 
     await studentStore.save(student);
-
-    try {
-        await attemptLogStore.logAttempt({
-            studentId,
-            questionId: realQuestion.id,
-            concept: realQuestion.concept,
-            difficulty: realQuestion.difficulty,
-            studentAnswer,
-            work,
-            answerCorrect: Boolean(analysis.correct),
-            demonstratedCorrect,
-            misconceptionDetected,
-            misconceptionType: analysis.misconception?.type ?? null,
-            misconceptionSource: analysis.misconception?.source ?? null
-        });
-    } catch (error) {
-        console.error("Attempt logging failed:", error.message);
-    }
 
 
     // ========================================================
@@ -555,6 +596,7 @@ async function recordAnswer({
     return {
 
         success: true,
+        persisted: true,
 
 
         // ----------------------------------------------------
@@ -657,6 +699,18 @@ async function recordAnswer({
                     ? analysis.misconception.source || "rules"
                     : analysis.correctnessSource
         },
+
+        targetedPractice: targetedPracticeForAnswer
+            ? {
+                type: targetPractice.type,
+                label: labelMisconception(targetPractice.type),
+                attempts: targetPractice.attempts,
+                targetErrors: targetPractice.targetErrors,
+                errorRate: Number((targetPractice.targetErrors / targetPractice.attempts).toFixed(4)),
+                active: targetPractice.active,
+                completed: targetPractice.completed
+            }
+            : null,
 
 
         // ----------------------------------------------------
@@ -774,6 +828,8 @@ async function startSession({
 
     difficulty = 1,
 
+    misconceptionType = null,
+
     resetToken = null
 
 }) {
@@ -827,12 +883,24 @@ async function startSession({
     state.currentDifficulty =
         normalizedDifficulty;
 
+    if (misconceptionType && !Object.hasOwn(MISCONCEPTION_LABELS, misconceptionType)) {
+        throw requestError("Unsupported misconception type for targeted practice.");
+    }
+
+    if (student.targetedPractice?.active) {
+        student.targetedPractice.active = false;
+    }
+
     // --------------------------------------------------------
     // Select first question
     // --------------------------------------------------------
 
-    const question =
-        questionService.getNextQuestion({
+    const question = misconceptionType
+        ? questionService.getTargetedQuestion({
+            concept,
+            recentQuestionIds: state.recentQuestionIds
+        })
+        : questionService.getNextQuestion({
 
             concept,
 
@@ -851,6 +919,35 @@ async function startSession({
         );
     }
 
+    if (misconceptionType) {
+        const priorAttempts = await attemptLogStore.listAttempts({
+            studentId,
+            limit: 500
+        });
+        const baselineRows = priorAttempts
+            .filter(row => row.concept === concept)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 10);
+        student.targetedPractice = {
+            sessionId: randomUUID(),
+            type: misconceptionType,
+            concept,
+            startedAt: new Date().toISOString(),
+            completedAt: null,
+            baseline: {
+                attempts: baselineRows.length,
+                errors: baselineRows.filter(row =>
+                    row.misconceptionDetected && row.misconceptionType === misconceptionType
+                ).length
+            },
+            attempts: 0,
+            targetErrors: 0,
+            active: true,
+            completed: false,
+            questionIds: [question.id]
+        };
+    }
+
     await studentStore.save(student);
 
 
@@ -861,6 +958,7 @@ async function startSession({
     return {
 
         success: true,
+        persisted: true,
 
         studentId,
 
@@ -868,6 +966,17 @@ async function startSession({
 
         difficulty:
             state.currentDifficulty,
+
+        targetedPractice: misconceptionType
+            ? {
+                type: misconceptionType,
+                label: labelMisconception(misconceptionType),
+                attempts: 0,
+                targetErrors: 0,
+                active: true,
+                completed: false
+            }
+            : null,
 
         question:
             questionService.toStudentQuestion(question)
@@ -1077,6 +1186,17 @@ async function getStudentProfile(studentId) {
 
     let commonMistakes = [];
 
+    let trendAttemptLogs = [];
+    try {
+        trendAttemptLogs = await attemptLogStore.listAttempts({
+            studentId,
+            limit: 500
+        });
+    } catch (_err) {
+        // Historical trend data is unavailable; the profile still reports
+        // cumulative counts from the student progress document.
+    }
+
     if (Object.keys(allMisconceptionsByType).length > 0) {
         const conceptsByType = {};
         for (const [concept, state] of Object.entries(student.concepts)) {
@@ -1146,6 +1266,88 @@ async function getStudentProfile(studentId) {
         } catch (_err) {
             // Attempt log unavailable — return empty list gracefully.
         }
+    }
+
+    const trendChronological = trendAttemptLogs.slice().sort(
+        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+    );
+    const previousTrendWindow = trendChronological.slice(-20, -10);
+    const recentTrendWindow = trendChronological.slice(-10);
+    const trendTypes = new Set(Object.keys(allMisconceptionsByType));
+    for (const row of trendChronological) {
+        if (row.misconceptionDetected && row.misconceptionType) {
+            trendTypes.add(row.misconceptionType);
+        }
+    }
+    const calculateTypeRate = (window, type) => {
+        if (!window.length) return null;
+        const errors = window.filter(row =>
+            row.misconceptionDetected && row.misconceptionType === type
+        ).length;
+        return {
+            errors,
+            attempts: window.length,
+            rate: Number((errors / window.length).toFixed(4))
+        };
+    };
+    const misconceptionTrends = Array.from(trendTypes).map(type => {
+        const previous = previousTrendWindow.length === 10
+            ? calculateTypeRate(previousTrendWindow, type)
+            : null;
+        const recent = calculateTypeRate(recentTrendWindow, type);
+        const enoughAttempts = previous !== null &&
+            recentTrendWindow.length === 10;
+        return {
+            type,
+            label: labelMisconception(type),
+            status: !enoughAttempts
+                ? "Not enough attempts yet"
+                : recent.rate < previous.rate
+                    ? "Improving"
+                    : "Needs more practice",
+            previous,
+            recent
+        };
+    }).sort((a, b) => (b.recent?.errors || 0) - (a.recent?.errors || 0));
+
+    const targetSession = student.targetedPractice || null;
+    let targetedPracticeImpact = null;
+    if (targetSession?.completed && targetSession.sessionId) {
+        const followUpRows = trendChronological
+            .filter(row => row.targetedPracticeSessionId === targetSession.sessionId &&
+                row.targetedPracticePhase === "follow_up" &&
+                row.concept === targetSession.concept)
+            .slice(-10);
+        const followUpErrors = followUpRows.filter(row =>
+            row.misconceptionDetected && row.misconceptionType === targetSession.type
+        ).length;
+        const baseline = targetSession.baseline || { attempts: 0, errors: 0 };
+        const hasComparison = baseline.attempts === 10 && followUpRows.length === 10;
+        targetedPracticeImpact = {
+            type: targetSession.type,
+            label: labelMisconception(targetSession.type),
+            concept: targetSession.concept,
+            focused: {
+                attempts: targetSession.attempts,
+                errors: targetSession.targetErrors,
+                rate: targetSession.attempts
+                    ? Number((targetSession.targetErrors / targetSession.attempts).toFixed(4))
+                    : null
+            },
+            before: baseline.attempts
+                ? { attempts: baseline.attempts, errors: baseline.errors, rate: Number((baseline.errors / baseline.attempts).toFixed(4)) }
+                : null,
+            followUp: {
+                attempts: followUpRows.length,
+                errors: followUpErrors,
+                rate: followUpRows.length ? Number((followUpErrors / followUpRows.length).toFixed(4)) : null
+            },
+            status: !hasComparison
+                ? "Not enough follow-up attempts yet"
+                : followUpErrors / followUpRows.length < baseline.errors / baseline.attempts
+                    ? "Improving"
+                    : "Needs more practice"
+        };
     }
 
 
@@ -1232,6 +1434,7 @@ async function getStudentProfile(studentId) {
 
             // Find the most common recurring error for this concept
             let topMistakeForConcept = null;
+            let topMistakeCount = 0;
             try {
                 const conceptLogs = await attemptLogStore.listAttempts({
                     studentId,
@@ -1256,6 +1459,7 @@ async function getStudentProfile(studentId) {
                     .sort((a, b) => b[1] - a[1]);
                 if (sorted2.length > 0) {
                     topMistakeForConcept = sorted2[0][0];
+                    topMistakeCount = sorted2[0][1];
                 }
             } catch (_err) { /* ignore */ }
 
@@ -1265,11 +1469,16 @@ async function getStudentProfile(studentId) {
                 .replace(/\b\w/g, c => c.toUpperCase());
 
             let reason;
-            if (topMistakeForConcept) {
+            if (topMistakeForConcept && topMistakeCount >= 2) {
                 reason =
                     `You've made a "${labelMisconception(topMistakeForConcept)}" ` +
-                    `error multiple times in ${conceptDisplay}. ` +
+                    `error ${topMistakeCount} times in ${conceptDisplay}. ` +
                     `Targeted practice will help fix this pattern.`;
+            } else if (topMistakeForConcept) {
+                reason =
+                    `A "${labelMisconception(topMistakeForConcept)}" error appeared ` +
+                    `once in ${conceptDisplay}. Keep practicing and StudyTwin will ` +
+                    `watch whether it becomes a recurring pattern.`;
             } else if (targetState.recentAccuracy < 0.5) {
                 reason =
                     `Your recent accuracy in ${conceptDisplay} ` +
@@ -1288,6 +1497,7 @@ async function getStudentProfile(studentId) {
                     targetState.currentDifficulty,
                 reason,
                 topMistakeType: topMistakeForConcept,
+                topMistakeCount,
                 topMistakeLabel: topMistakeForConcept
                     ? labelMisconception(topMistakeForConcept)
                     : null
@@ -1355,6 +1565,14 @@ async function getStudentProfile(studentId) {
         weakestConcepts,
 
         recentAttempts,
+
+        misconceptionTrends,
+
+        trendAttemptCount: trendChronological.length,
+
+        targetedPractice: student.targetedPractice || null,
+
+        targetedPracticeImpact,
 
         nextLearningStep
     };
@@ -1473,7 +1691,26 @@ async function resetStudent(studentId, resetToken) {
         return false;
     }
 
-    return studentStore.remove(studentId);
+    const reset = {
+        complete: false,
+        deletedProgress: false,
+        deletedAttempts: false,
+        attemptCount: null
+    };
+
+    try {
+        reset.attemptCount = await attemptLogStore.deleteAttemptsForStudent(studentId);
+        reset.deletedAttempts = true;
+        reset.deletedProgress = await studentStore.remove(studentId);
+        if (!reset.deletedProgress) {
+            reset.deletedProgress = !(await studentStore.get(studentId));
+        }
+        reset.complete = reset.deletedAttempts && reset.deletedProgress;
+        return reset;
+    } catch (error) {
+        error.resetResult = reset;
+        throw error;
+    }
 }
 
 

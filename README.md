@@ -9,8 +9,10 @@ StudyTwin is an adaptive math-practice demo. The browser talks to an Express API
 3. Install server dependencies from the project root:
 
    ```powershell
-   npm install
+   npm ci
    ```
+
+   For a reproducible clean install from the lockfile, use `npm ci` before running the checks.
 
 4. Start the API:
 
@@ -21,23 +23,25 @@ StudyTwin is an adaptive math-practice demo. The browser talks to an Express API
 5. Optionally start the Python ML API from `ML` in another terminal:
 
    ```powershell
-   python -m pip install fastapi uvicorn pandas scikit-learn
+   python -m pip install -r requirements.txt
    uvicorn api:app --host 127.0.0.1 --port 8000
    ```
+
+   The FastAPI module and step-classifier model resolve paths from their source files, so it can also be launched from the project root with `uvicorn ML.api:app --host 127.0.0.1 --port 8000`.
 
    If the ML API is unavailable, the Node service uses a simple accuracy-based recommendation. ML predictions are supporting signals, not validated assessments of a learner.
 6. The Express server also serves the frontend as static files, so opening `http://localhost:3000` is enough.
 
 ## ML model
 
-The trained model file (`model/model.pkl`) is excluded from the repository because `.gitignore` omits all `*.pkl` files. After a fresh clone you must retrain it before starting the ML service:
+The student performance model (`model/model.pkl`) is excluded from the repository. After a fresh clone you must retrain it before starting the ML service:
 
 ```powershell
 cd ML
 python model.py
 ```
 
-`model.py` reads `data/studytwin_ml_training_data.csv`, trains a Logistic Regression pipeline, and writes the model to `model/model.pkl`. The training data **is** checked in, so no data download is needed. Required packages: `pandas scikit-learn`.
+`model.py` reads `data/studytwin_ml_training_data.csv`, trains a Logistic Regression pipeline, and writes the model to `model/model.pkl`. The training data is synthetic and checked in. `ML/step_misconception_model.pkl` is checked in for step analysis. Install the pinned Python dependencies with `python -m pip install -r ML/requirements.txt` from the repository root.
 
 ## MongoDB progress storage
 
@@ -63,13 +67,16 @@ npm run export-attempts -- --blind --format csv --out to_label.csv
 
 With `MEMORY_STORE=1`, progress and attempts stay in memory until the process exits (fine for local demos). The export script reads from MongoDB and will see zero rows in memory-store mode.
 
+**Retention policy:** There is no automatic expiry. MongoDB retains progress and raw answer/work history until the student resets or an operator deletes it. Reset permanently deletes both the student's `student_progress` document and every `student_attempts` row for that student ID. The reset screen names both data sets. The API reports completion only after both deletions are confirmed; if storage fails partway through, the UI reports an unconfirmed result and keeps the browser identity so reset can be retried. If a submission cannot confirm both its attempt log and progress write, it is not shown as saved; the error explains that it may have been partially recorded. Exported CSV/JSON files and any provider-managed backups are separate copies and are not removed by the app reset; their owners/providers must manage their retention.
+
 ## Personalized learning dashboard
 
 The dashboard (click **View My Progress** in the sidebar) shows:
 
 - **Demonstrated mastery** (correct answer and sound work) and **final-answer accuracy** (numerical answer correctness), alongside learning level and misconception count.
 - **Common mistakes** with the most affected concept and recurrence count.
-- **Next learning step** — the concept that needs the most attention right now, with an explanation of why, plus a **Practice this skill** button that immediately starts a targeted session at the recommended difficulty.
+- **Misconception trends** — each tracked error's rate in the most recent 10 attempts compared with the 10 before them. Fewer errors is **Improving**; an unchanged or higher rate is **Needs more practice**. Fewer than 20 saved attempts is **Not enough attempts yet**.
+- **Next learning step** — the concept that needs the most attention right now. A recurring misconception can start a three-question progression in that concept, moving from easier to harder questions, recording how often that specific error appears, then returning to mixed algebra practice.
 - **Concept mastery** — a progress bar per concept, showing accuracy and current difficulty.
 - **Concepts needing most practice** — the same list ranked by accuracy, showing the count of detected errors per concept.
 - **Recent attempts** — the last five submissions with concept, difficulty, result, and the mistake label if one was detected.
@@ -85,11 +92,13 @@ After each answer, the ML model (or heuristic fallback) estimates the probabilit
 
 The feedback panel shows the current probability, the resulting difficulty change, and the ML recommendation text after every submission.
 
-If a student is repeatedly making a distribution error, the dashboard's **Next learning step** card identifies that pattern, explains it, and the **Practice this skill** button starts a Distributive Property session at the student's current difficulty. As accuracy improves, the ML raises the difficulty automatically.
+If a student makes the same misconception at least twice, the dashboard offers **Practice this mistake**. It starts a focused three-question progression in the affected concept and records the question outcomes. Later attempts in that concept are tagged as follow-up for that practice session. The dashboard compares the last 10 pre-practice attempts with the first 10 subsequent attempts for that error type, and leaves the status provisional until both windows contain 10 records.
 
 ## LLM step review
 
-Set `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` to enable the OpenAI-compatible chat-completions review. It helps interpret submitted work, including arrow chains, prose, and parser-readable equations, and can suggest one of these five step labels:
+Set `GEMINI_API_KEY` and `GEMINI_MODEL=gemini-3.8-flash` in `Server/.env` to enable native Gemini `generateContent` review. The key stays on the server. If Gemini is configured, it takes precedence over the legacy `LLM_*` values; a Gemini model in `LLM_MODEL` also uses `LLM_API_KEY` as a compatibility fallback. An OpenAI-compatible provider can still be configured with `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` when Gemini is not configured. Review helps interpret submitted work, including arrow chains, prose, and parser-readable equations, and can suggest one of these five step labels:
+
+Verify the Gemini key and live provider connection with `npm run check:gemini` from the project root. The check submits only a synthetic equation and work sample.
 
 - `sign_error`
 - `wrong_inverse_op`
@@ -103,11 +112,13 @@ After submission, feedback shows the identified incorrect line, an equivalent co
 
 ## Reliability and privacy
 
-**MongoDB unavailable during submission.** If the student store raises a connection error (ECONNREFUSED, MongoServerSelectionError, or similar), `POST /api/sessions/answer` returns HTTP 503 with `success: false` and `persisted: false`. The frontend shows a clear "your answer could not be saved" message rather than a generic error. The student is not told their answer was recorded when it was not.
+**MongoDB unavailable during submission.** If writing either the raw attempt or progress fails, `POST /api/sessions/answer` returns HTTP 503 with `success: false`, `persisted: false`, and `persistenceState: "unconfirmed"`. Because MongoDB can fail after accepting a write, the UI says the submission may be partially recorded and asks the student to check the profile before retrying. A successful response includes `persisted: true` only after both writes finish.
+
+**MongoDB unavailable during reset.** Reset deletes attempt history first, then progress. The API reports which deletion completed if the second step fails. The UI does not clear the browser's student ID or token until both deletions are confirmed, so the student can retry. MongoDB does not provide a cross-collection transaction in this demo; a partial reset is reported as unconfirmed, never as complete.
 
 **Express server unavailable.** The frontend's `api()` helper catches network errors and shows a user-facing message. The connection pill in the top-right updates to "API offline" via the `/health` ping on load.
 
-**Demo-level profile isolation.** Session creation, answer submission, profile reads (including concept profiles), and resets require a matching `X-Student-Token` header. The public attempt-export API is disabled unless an `ATTEMPT_EXPORT_TOKEN` is configured. These checks reduce accidental cross-profile access, but they are not user authentication or a substitute for server-side authorization.
+**Demo-level profile isolation.** Session creation, answer submission, profile reads (including concept profiles), and resets require a matching `X-Student-Token` header. The test suite verifies missing and mismatched tokens are denied. The public attempt-export API is disabled unless an `ATTEMPT_EXPORT_TOKEN` is configured. These checks reduce accidental cross-profile access, but they are not user authentication or a substitute for server-side authorization.
 
 **Anonymous demo profiles.** Each browser independently generates a UUID student ID and a separate session token on first load, persisted in `localStorage`. There is no shared login and no name or email collected. A user can still manipulate browser state or make direct API requests; do not use this setup for real student data.
 
@@ -118,16 +129,21 @@ The repository includes Vercel configuration for the static frontend and a serve
 - `MONGODB_URI` (required; use a MongoDB Atlas connection string)
 - `MONGODB_DB_NAME` (optional; defaults to `studytwin`)
 - `ATTEMPT_EXPORT_TOKEN` (optional; required to enable the protected attempt-export API)
+- `GEMINI_API_KEY`, `GEMINI_MODEL` (optional; Gemini native review, recommended)
 - `LLM_API_URL`, `LLM_API_KEY`, `LLM_MODEL` (optional)
-- `ML_API_URL` (optional; point it to a separately hosted FastAPI ML service)
+- `ML_API_URL` (optional; point it to the separately hosted FastAPI ML service's public base URL, e.g. `https://studytwin-ml.example.com`; do not use `127.0.0.1` in a hosted Node deployment)
+- `CORS_ORIGINS` (comma-separated exact frontend origins when frontend and API are hosted on different domains; empty by default)
+- `TRUST_PROXY_HOPS` (default `0`; set only to the exact number of trusted proxy hops in the hosting topology)
 
-Deploy with the Vercel CLI (`vercel --prod`) or the Vercel dashboard. Vercel does not host the included FastAPI service through this configuration. If no reachable `ML_API_URL` is provided, adaptive recommendations use the heuristic fallback. Never commit credentials or add them to frontend code.
+Deploy the Node API/frontend with the Vercel CLI (`vercel --prod`) or dashboard. Vercel does not host the included FastAPI service through this configuration. To deploy ML separately, build the container from the repository root with `docker build -f ML/Dockerfile -t studytwin-ml .`, publish it to a container host, and set the Node deployment's `ML_API_URL` to that service's public base URL. The image trains the student model from the checked-in synthetic dataset and includes the step model. Set CORS origins on the Node API only when the UI is served from a different origin. If no reachable `ML_API_URL` is provided, the Node API uses its heuristic fallback; never commit credentials or add them to frontend code.
+
+Before calling ML deployment verified, set `ML_API_URL` in the Node environment to the hosted URL and run `npm run check:ml` from the project root. This checks `/health` and submits a real sample payload to `/predict`. Then complete a browser submission against that same deployed Node API and confirm the response reports `adaptation.source: "ml"`; the app deliberately falls back to a heuristic if prediction fails. A passing local service check is not proof of a deployed service.
 
 ## Rate limiting
 
 `POST /api/sessions/answer` is rate-limited per client IP (defaults: 30 requests/minute and 200 requests/day). Override with `RATE_LIMIT_ANSWER_PER_MIN` and `RATE_LIMIT_ANSWER_DAILY`.
 
-The limiter reads the client IP from the **last** entry in `X-Forwarded-For`, which is appended by the platform and cannot be spoofed by the client. On a direct connection it falls back to the socket address.
+The limiter uses Express's validated `req.ip`. Forwarded headers are ignored by default; configure `TRUST_PROXY_HOPS` only for a known hosting topology that overwrites/appends those headers. Never trust arbitrary forwarded headers on a directly reachable server.
 
 The counters are in-memory. On Vercel each serverless instance has its own counters, so they do not accumulate across instances. For a shared persistent counter, replace `windowCount()` in `Server/middleware/rateLimit.js` with an atomic increment against Upstash Redis or MongoDB. Enable the LLM only after confirming rate limits work end-to-end.
 
@@ -140,7 +156,7 @@ npm test
 npm run eval
 ```
 
-`npm run eval` runs three hand-written sets with the LLM disabled. Results as of 22 October 2026:
+`npm run eval` runs three hand-written sets with the LLM disabled. Results as of 23 October 2026:
 
 | Set | Cases | Final-answer accuracy | Exact misconception label | Notes |
 |-----|------:|----------------------:|-------------------------:|-------|
@@ -171,49 +187,26 @@ This is the number to quote when discussing how well the system generalises to r
 
 ## Demo journey
 
-The following five-step sequence demonstrates the complete adaptive loop. You can run it with `MEMORY_STORE=1` (no MongoDB needed) and the ML service either running or offline (the heuristic fallback covers both).
+Run this only with a synthetic profile (`MEMORY_STORE=1`); do not enter classmates' or other real student data. Start the Node API with the ML service online if you want to demonstrate ML adaptation, then open `http://localhost:3000`.
 
-**Step 1 — Student answers a question and shows their working.**
+1. **Create a pre-practice baseline.** Submit 10 Distributive Property questions. Include four `failed_to_distribute` errors and six attempts with valid distribution work. For the error example, on `2(x + 3) = 14`, submit the correct final answer `4` but write `2x+3=14 -> 2x=8 -> x=4`. This shows that final-answer correctness and demonstrated mastery are different.
+2. **Show the correction.** The feedback should keep the final answer marked correct, identify the invalid distribution transition, show a valid correction (`2x+6=14`), and indicate that mastery was not demonstrated. For a wrong-answer variant, submit `5.5` with the same flawed chain.
+3. **Start focused practice.** Open the dashboard. The repeated distribution mistake should offer **Practice this mistake**. Complete the three focused questions; the banner shows the targeted misconception and the summary records matching errors among those three questions.
+4. **Measure later performance.** Continue with 10 further Distributive Property attempts and use valid distribution steps. Reopen the dashboard. It compares the actual matching-error counts: 4/10 before focused practice against 0/10 in subsequent practice, and reports **Improving**. If fewer than 10 later attempts are saved, the status stays **Not enough follow-up attempts yet**.
+5. **Explain the limit.** The 3-question activity and 10-attempt follow-up illustrate a recorded short-term change only. They do not establish durable mastery or a causal effect. Keep the profile synthetic, label any screenshots “synthetic demo data,” and do not present the result as evidence about real learners.
 
-Open `http://localhost:3000`. Select *Distributive Property*, difficulty *Easy*, and click **Start Practice**. You'll see a question like `Solve: 2(x + 3) = 14`. Enter a wrong answer and work that contains a distribution error, for example:
+### Architecture
 
+```mermaid
+flowchart LR
+  Browser[Frontend] -->|X-Student-Token| Node[Express API]
+  Node --> Progress[(MongoDB progress)]
+  Node --> Attempts[(MongoDB attempt history)]
+  Node -->|ML_API_URL| FastAPI[FastAPI ML service]
+  Node -->|fallback if ML unavailable| Heuristic[Heuristic adaptation]
 ```
-Answer: 5
-Work:
-2(x+3)=14
-2x+3=14
-2x=11
-x=5.5
-```
 
-**Step 2 — StudyTwin identifies the mathematical mistake.**
-
-Click **Check Answer**. The feedback panel highlights:
-
-- The misconception type: *Failed to distribute*
-- The incorrect step: `2x+3=14`
-- The correct step: `2x+6=14`
-- An explanation: "Multiply both x and +3 by 2."
-
-**Step 3 — The student receives a correction and explanation.**
-
-The amber *Misconception Detected* box shows the targeted hint: "Distribute 2 to BOTH terms inside the parentheses." The worked solution below confirms the correct path.
-
-**Step 4 — The next question adapts to their performance.**
-
-The *StudyTwin prediction* card shows a low probability (e.g. 28 %), so the next difficulty stays at Easy or steps down. Click **Continue to Next Question** — the difficulty badge confirms the adapted level.
-
-**Step 5 — The dashboard records progress and recommends what to learn next.**
-
-Click **View My Progress**. The dashboard shows:
-
-- Overall accuracy and learning level.
-- Separate final-answer accuracy and demonstrated mastery.
-- *Common mistakes*: "Failed to distribute — 1×"
-- *Next learning step*: "Distributive Property — Targeted practice will help fix this pattern."
-- A **Practice this skill** button that immediately restarts a Distributive Property session at the recommended difficulty.
-
-After a few sessions on the same concept, the misconception count falls and accuracy rises. The ML raises the difficulty and the next-step recommendation shifts to a different concept.
+The screenshot capture should use the synthetic demo profile only. The project does not include a screenshot asset yet; add reviewed captures under `docs/screenshots/` before distributing a presentation copy.
 
 ## Limitations
 
@@ -225,4 +218,6 @@ After a few sessions on the same concept, the misconception count falls and accu
 - The in-memory rate limiter is per-process and resets when the process restarts. A shared classroom or NAT network shares one IP budget across all students.
 - Progress is persisted in MongoDB; this demo does not include multi-user authentication beyond the per-browser session token. Do not expose real student records publicly without adding proper authentication.
 - The Vercel setup hosts the Node API and frontend only. The Python ML API must be hosted separately if its predictions are needed.
+- No hosted ML URL is configured by default. Local FastAPI health/prediction checks do not verify a remote deployment; use `npm run check:ml` against the production Node environment, then verify a complete browser submission there.
+- Anonymous browser tokens are not identity verification. Before collecting classmates' work, add account authentication and authorization, durable shared rate limits, a reviewed privacy notice, and a verified deletion process. For a classroom demo, use synthetic data only.
 - `model/model.pkl` is not committed to the repository. Run `python ML/model.py` after cloning to retrain it.

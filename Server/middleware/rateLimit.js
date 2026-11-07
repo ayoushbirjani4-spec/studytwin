@@ -8,16 +8,10 @@
 //
 // IP DETECTION
 // ============
-// On Vercel (and most reverse proxies), each hop prepends its own
-// address to X-Forwarded-For, so the header looks like:
-//
-//   X-Forwarded-For: <client>, <proxy1>, <platform>
-//
-// Trusting the FIRST (leftmost) entry is unsafe: any client can
-// send an arbitrary value and bypass the limiter.  We use the
-// LAST entry instead, which is appended by the platform and
-// cannot be spoofed.  On a direct connection (no proxy) we fall
-// back to the socket address.
+// Express derives req.ip through its configured trust-proxy chain.
+// The API defaults to trusting no proxy, so a client-supplied
+// X-Forwarded-For value is ignored. Configure a hop count only for
+// a known deployment topology with trusted proxy forwarding.
 //
 // SERVERLESS NOTE
 // ===============
@@ -43,21 +37,12 @@ const DEFAULT_PER_DAY    = Number(process.env.RATE_LIMIT_ANSWER_DAILY)    || 200
 const EVICTION_INTERVAL_MS = 10 * 60 * 1000;
 
 // ============================================================
-// CLIENT KEY — last X-Forwarded-For entry wins
+// CLIENT KEY — Express's validated address
 // ============================================================
 
 function clientKey(req) {
-  const forwarded = req.headers["x-forwarded-for"];
-
-  if (typeof forwarded === "string" && forwarded.trim()) {
-    const entries = forwarded.split(",");
-    // The platform appends the connecting address as the last entry.
-    const last = entries[entries.length - 1].trim();
-    if (last) {
-      return last;
-    }
-  }
-
+  // Express validates forwarded addresses using the configured trusted proxy chain.
+  // With trust proxy disabled, req.ip resolves to the socket peer.
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
 

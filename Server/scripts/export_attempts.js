@@ -85,7 +85,8 @@ const FULL_HEADERS = [
   "demonstratedCorrect",
   "misconceptionDetected",
   "misconceptionType",
-  "misconceptionSource"
+  "misconceptionSource",
+  "targetedPracticeType"
 ];
 
 // Blind export (omits system labels; adds empty gold column for human labeler).
@@ -120,7 +121,8 @@ function rowToFullCsv(row) {
     row.demonstratedCorrect,
     row.misconceptionDetected,
     row.misconceptionType,
-    row.misconceptionSource
+    row.misconceptionSource,
+    row.targetedPracticeType
   ].map(csvEscape).join(",");
 }
 
@@ -151,7 +153,7 @@ function toCsv(rows, blind) {
 // ============================================================
 
 function toBlindJson(row) {
-  const { misconceptionType, misconceptionSource, demonstratedCorrect, misconceptionDetected, ...rest } = row;
+  const { misconceptionType, misconceptionSource, targetedPracticeType, demonstratedCorrect, misconceptionDetected, ...rest } = row;
   return { ...rest, gold: "" };
 }
 
