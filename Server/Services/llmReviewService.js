@@ -14,7 +14,7 @@ function getConfig() {
   const configuredGeminiModel = (process.env.GEMINI_MODEL || "").trim();
   const legacyGeminiSelected = /^gemini-/i.test(llmModel);
   const geminiModel = configuredGeminiModel ||
-    (legacyGeminiSelected ? llmModel : "gemini-3.8-flash");
+    (legacyGeminiSelected ? llmModel : "gemini-2.5-flash");
   const geminiKey = (process.env.GEMINI_API_KEY ||
     (configuredGeminiModel || legacyGeminiSelected ? process.env.LLM_API_KEY : "") || "").trim();
 

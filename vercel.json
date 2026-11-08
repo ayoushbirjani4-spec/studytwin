@@ -1,4 +1,9 @@
 {
   "version": 2,
-  "outputDirectory": "frontend"
+  "outputDirectory": "frontend",
+  "functions": {
+    "api/[...path].js": {
+      "maxDuration": 60
+    }
+  }
 }

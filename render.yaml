@@ -1,0 +1,17 @@
+# Render Blueprint for the StudyTwin ML service (FastAPI).
+# In Render: New > Blueprint > select this repository. See DEPLOY.md.
+#
+# The Node API and frontend are deployed to Vercel separately (vercel.json).
+# After this service is live, copy its URL into Vercel as ML_API_URL.
+services:
+  - type: web
+    name: studytwin-ml
+    runtime: docker
+    # The Dockerfile copies ML/ and data/, so build from the repository root.
+    dockerfilePath: ./ML/Dockerfile
+    dockerContext: .
+    # Free instances sleep after inactivity; the Node API falls back to its
+    # heuristic while this wakes (ML_TIMEOUT_MS, default 5s).
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true

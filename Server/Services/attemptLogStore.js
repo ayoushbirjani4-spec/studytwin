@@ -23,7 +23,11 @@ async function getCollection() {
   }
 
   if (!clientPromise) {
-    client = new MongoClient(uri);
+    // Fail fast when MongoDB is down: the driver's default 30s wait
+    // leaves the student staring at a spinner before the 503.
+    client = new MongoClient(uri, {
+      serverSelectionTimeoutMS: Number(process.env.MONGODB_TIMEOUT_MS) || 5000
+    });
     clientPromise = client.connect().catch((error) => {
       client = undefined;
       clientPromise = undefined;
@@ -54,6 +58,7 @@ async function logAttempt(entry) {
     targetedPracticeType: entry.targetedPracticeType ?? null,
     targetedPracticeSessionId: entry.targetedPracticeSessionId ?? null,
     targetedPracticePhase: entry.targetedPracticePhase ?? null,
+    liveHintsSeen: Number.isInteger(entry.liveHintsSeen) ? entry.liveHintsSeen : 0,
     createdAt: new Date()
   };
 

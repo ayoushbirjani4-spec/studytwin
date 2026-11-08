@@ -26,12 +26,21 @@ require("dotenv").config({
 const questionService = require("./Services/questionService");
 const mlService = require("./Services/mlService");
 const studySessionService = require("./Services/studySessionService");
+const misconceptionService = require("./Services/misconceptionService");
 const studentStore = require("./Services/studentStore");
 const attemptLogStore = require("./Services/attemptLogStore");
 const { createAnswerRateLimiter } = require("./middleware/rateLimit");
 const { serviceStatus } = require("./middleware/serviceErrors");
 
 const answerRateLimiter = createAnswerRateLimiter();
+
+// Live step checks fire as the student types (debounced in the browser),
+// so they get a higher, separate budget from answer submissions.
+const stepCheckRateLimiter = createAnswerRateLimiter({
+    perMinute: 120,
+    perDay: 3000
+});
+const MAX_LIVE_WORK_LENGTH = 2000;
 
 
 // ============================================================
@@ -326,11 +335,64 @@ app.post(
                         : "Unable to process or save your answer.",
 
                 persisted: false,
-                persistenceState: "unconfirmed"
+                persistenceState: error.nothingSaved
+                    ? "not_saved"
+                    : "unconfirmed"
             });
 
         }
 
+    }
+);
+
+
+// ============================================================
+// LIVE STEP CHECK
+// ============================================================
+//
+// POST /api/steps/check   { questionId, work }
+//
+// Checks each written line against the previous one while the student
+// types. Rule-based only; reads no student data and saves nothing.
+//
+// ============================================================
+
+app.post(
+    "/api/steps/check",
+    stepCheckRateLimiter,
+    (req, res) => {
+        const { questionId, work } = req.body || {};
+
+        if (typeof questionId !== "string" || typeof work !== "string") {
+            return res.status(400).json({
+                success: false,
+                error: "questionId and work must be strings."
+            });
+        }
+
+        if (work.length > MAX_LIVE_WORK_LENGTH) {
+            return res.status(400).json({
+                success: false,
+                error: "Working is too long to check live."
+            });
+        }
+
+        try {
+            const result = misconceptionService.checkSteps({ questionId, work });
+            if (!result) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Question not found."
+                });
+            }
+            res.json({ success: true, ...result });
+        } catch (error) {
+            console.error("Step check error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Unable to check these steps."
+            });
+        }
     }
 );
 
@@ -740,14 +802,14 @@ app.get(
 
                 const headers = blind
                     ? ["id","createdAt","studentId","questionId","concept","difficulty","studentAnswer","work","answerCorrect","gold"]
-                    : ["id","createdAt","studentId","questionId","concept","difficulty","studentAnswer","work","answerCorrect","demonstratedCorrect","misconceptionDetected","misconceptionType","misconceptionSource","targetedPracticeType"];
+                    : ["id","createdAt","studentId","questionId","concept","difficulty","studentAnswer","work","answerCorrect","demonstratedCorrect","misconceptionDetected","misconceptionType","misconceptionSource","targetedPracticeType","liveHintsSeen"];
 
                 const lines = [headers.join(",")];
 
                 for (const row of chronological) {
                     const values = blind
                         ? [row._id, row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt, row.studentId, row.questionId, row.concept, row.difficulty, row.studentAnswer, row.work, row.answerCorrect, ""]
-                        : [row._id, row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt, row.studentId, row.questionId, row.concept, row.difficulty, row.studentAnswer, row.work, row.answerCorrect, row.demonstratedCorrect, row.misconceptionDetected, row.misconceptionType, row.misconceptionSource, row.targetedPracticeType];
+                        : [row._id, row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt, row.studentId, row.questionId, row.concept, row.difficulty, row.studentAnswer, row.work, row.answerCorrect, row.demonstratedCorrect, row.misconceptionDetected, row.misconceptionType, row.misconceptionSource, row.targetedPracticeType, row.liveHintsSeen ?? 0];
                     lines.push(values.map(csvEscape).join(","));
                 }
 

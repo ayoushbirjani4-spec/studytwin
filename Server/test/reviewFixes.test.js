@@ -314,5 +314,77 @@ test("valid distributive work that stops early is not called a distribution erro
 
   assert.equal(result.correct, false);
   assert.notEqual(result.misconception.type, "possible_distribution_error");
-  assert.equal(reviewCalls, 1, "the rules cannot explain it, so the LLM is asked");
+  // The rules now recognise it as unfinished, so the LLM is not needed.
+  assert.equal(result.misconception.type, "incomplete_solution");
+  assert.equal(result.misconception.detected, false);
+  assert.equal(result.misconception.correctStep, "x = 3");
+  assert.match(result.misconception.message, /stopped at 3x=9.*divide both sides by 3/i);
+  assert.equal(reviewCalls, 0);
+});
+
+test("unfinished working gets a next-step message, not 'couldn't pinpoint'", async (t) => {
+  const records = new Map();
+  t.mock.method(studentStore, "get", async (id) => (records.has(id) ? structuredClone(records.get(id)) : null));
+  t.mock.method(studentStore, "save", async (student) => records.set(student.studentId, structuredClone(student)));
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  t.mock.method(mlService, "getLearningRecommendation", async () => ({ success: false }));
+
+  const result = await studySessionService.recordAnswer({
+    studentId: "incomplete-student",
+    resetToken: "incomplete-token",
+    question: { id: "dp_004" },
+    studentAnswer: "15",
+    work: "5(x+4)=35\n5x+20=35\n5x=15"
+  });
+
+  assert.equal(result.misconception.detected, false);
+  assert.match(result.feedback.message, /stopped at 5x=15.*divide both sides by 5/i);
+  assert.equal(result.feedback.hint, "Divide both sides by 5.");
+  assert.equal(records.get("incomplete-student").concepts.distributive_property.misconceptionCount, 0);
+});
+
+test("valid steps that lead to a different answer are not called unfinished", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  const misconceptionService = require("../Services/misconceptionService");
+
+  // 3x=12 is reachable from nothing in the question; it solves to 4, not 3.
+  const result = await misconceptionService.analyzeAnswer({
+    questionId: "dp_002",
+    studentAnswer: "12",
+    work: "3x=12"
+  });
+
+  assert.notEqual(result.misconception.type, "incomplete_solution");
+});
+
+test("a rejected replay reports that nothing was saved", async (t) => {
+  t.mock.method(studentStore, "get", async () => ({
+    studentId: "replay-student", resetToken: "replay-token", concepts: {}, issuedQuestionIds: ["dp_002"]
+  }));
+  t.mock.method(studentStore, "save", async () => {});
+
+  const error = await studySessionService.recordAnswer({
+    studentId: "replay-student",
+    resetToken: "replay-token",
+    question: { id: "dp_001" },
+    studentAnswer: "4",
+    work: ""
+  }).then(() => null, (e) => e);
+
+  assert.equal(error.statusCode, 409);
+  assert.equal(error.nothingSaved, true);
+});
+
+test("distribution-rule diagnoses are labelled with source rules", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  const misconceptionService = require("../Services/misconceptionService");
+
+  const result = await misconceptionService.analyzeAnswer({
+    questionId: "dp_003",
+    studentAnswer: "5.5",
+    work: "4(x-2)=20\n4x-2=20\n4x=22\nx=5.5"
+  });
+
+  assert.equal(result.misconception.type, "failed_to_distribute");
+  assert.equal(result.misconception.source, "rules");
 });

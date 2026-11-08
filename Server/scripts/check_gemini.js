@@ -4,7 +4,7 @@ require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 const llmReviewService = require("../Services/llmReviewService");
 
 async function main() {
-  const model = process.env.GEMINI_MODEL || process.env.LLM_MODEL || "gemini-3.8-flash";
+  const model = process.env.GEMINI_MODEL || process.env.LLM_MODEL || "gemini-2.5-flash";
   const hasKey = Boolean(
     process.env.GEMINI_API_KEY ||
     (/^gemini-/i.test(model) && process.env.LLM_API_KEY)

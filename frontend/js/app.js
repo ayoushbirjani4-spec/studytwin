@@ -121,6 +121,98 @@ function updateSidebar() {
   $("levelLabel").textContent = difficultyName(state.difficulty);
 }
 
+// ============================================================
+// LIVE STEP CHECKING
+// ============================================================
+// Checks each line of working against the previous one while the
+// student types. The final "x = number" line is never judged here;
+// the student presses Check Answer for that.
+
+const LIVE_CHECK_DELAY_MS = 450;
+
+const liveSteps = {
+  timer: null,
+  requestId: 0,
+  // Distinct mistakes the checker has pointed out for this question.
+  hintsSeen: new Set()
+};
+
+const LIVE_STATUS = {
+  given: { icon: "•", label: "The question" },
+  valid: { icon: "✓", label: "Correct step" },
+  invalid: { icon: "✗", label: "Mistake in this step" },
+  final: { icon: "→", label: "Final line" },
+  unreadable: { icon: "?", label: "Can't read this line" }
+};
+
+function resetLiveSteps() {
+  clearTimeout(liveSteps.timer);
+  liveSteps.requestId += 1;
+  liveSteps.hintsSeen = new Set();
+  $("liveSteps").innerHTML = "";
+  $("liveSteps").classList.add("hidden");
+}
+
+function scheduleLiveCheck() {
+  clearTimeout(liveSteps.timer);
+  liveSteps.timer = setTimeout(runLiveCheck, LIVE_CHECK_DELAY_MS);
+}
+
+async function runLiveCheck() {
+  const work = $("workInput").value;
+  if (!state.question || state.answered || !work.trim()) {
+    $("liveSteps").classList.add("hidden");
+    return;
+  }
+
+  const requestId = ++liveSteps.requestId;
+  try {
+    const data = await api("/api/steps/check", {
+      method: "POST",
+      body: JSON.stringify({ questionId: state.question.id, work })
+    });
+    // Ignore replies to older keystrokes or a question that has moved on.
+    if (requestId !== liveSteps.requestId || state.answered) {
+      return;
+    }
+    renderLiveSteps(data.steps || []);
+  } catch (_error) {
+    // Live checking is a helper; if it fails, the student can still submit.
+    $("liveSteps").classList.add("hidden");
+  }
+}
+
+function renderLiveSteps(steps) {
+  if (steps.length === 0) {
+    $("liveSteps").classList.add("hidden");
+    return;
+  }
+
+  $("liveSteps").innerHTML = steps
+    .map((step) => {
+      const status = LIVE_STATUS[step.status] || LIVE_STATUS.unreadable;
+      if (step.status === "invalid") {
+        liveSteps.hintsSeen.add(`${step.line}|${step.label || ""}`);
+      }
+      const note = step.message
+        ? `<span class="live-note">${escapeHtml(step.message)}</span>`
+        : "";
+      const hint = step.hint
+        ? `<span class="live-hint">Hint: ${escapeHtml(step.hint)}</span>`
+        : "";
+      return `
+        <li class="live-step live-${escapeHtml(step.status)}">
+          <span class="live-icon" role="img" aria-label="${status.label}">${status.icon}</span>
+          <span class="live-body">
+            <code class="live-line">${escapeHtml(step.line)}</code>
+            ${note}${hint}
+          </span>
+        </li>`;
+    })
+    .join("");
+  $("liveSteps").classList.remove("hidden");
+}
+
 function renderQuestion(question) {
   if (!question) {
     showError("No next question was returned by the server.");
@@ -146,6 +238,7 @@ function renderQuestion(question) {
 
   $("answerInput").value = "";
   $("workInput").value = "";
+  resetLiveSteps();
 
   $("answerInput").disabled = false;
   $("workInput").disabled = false;
@@ -277,6 +370,9 @@ function renderFeedback(data) {
   window.lastResponse = data;
 
   state.answered = true;
+  // Stop any pending live check; the full feedback below replaces it.
+  clearTimeout(liveSteps.timer);
+  liveSteps.requestId += 1;
 
   state.stats = {
     attempts:
@@ -524,7 +620,9 @@ async function submitAnswer() {
 
           studentAnswer,
 
-          work
+          work,
+
+          liveHintsSeen: liveSteps.hintsSeen.size
         })
       }
     );
@@ -1003,6 +1101,8 @@ $("backToPracticeButton").addEventListener(
   "click",
   backToPractice
 );
+
+$("workInput").addEventListener("input", scheduleLiveCheck);
 
 $("answerInput").addEventListener(
   "keydown",

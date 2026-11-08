@@ -59,9 +59,12 @@ function labelMisconception(type) {
 const MAX_RECENT_RESULTS = 5;
 const MAX_RECENT_QUESTIONS = 5;
 
+// Request errors are raised before anything is written, so the API can
+// tell the student nothing was saved (unlike a mid-write database failure).
 function requestError(message, statusCode = 400) {
     const error = new Error(message);
     error.statusCode = statusCode;
+    error.nothingSaved = true;
     return error;
 }
 
@@ -238,7 +241,10 @@ async function recordAnswer({
 
     work = "",
 
-    resetToken = null
+    resetToken = null,
+
+    // How many mistakes the live step checker pointed out before submitting.
+    liveHintsSeen = 0
 
 }) {
 
@@ -347,6 +353,11 @@ async function recordAnswer({
 
     const demonstratedCorrect =
         isCorrect && !misconceptionDetected;
+    // Valid steps that stop before solving for x: not a misconception,
+    // but the feedback should name the next step.
+    const incompleteSolution =
+        !isCorrect &&
+        analysis.misconception?.type === "incomplete_solution";
     const hasSubmittedWork =
         String(work || "").trim().length > 0;
 
@@ -600,6 +611,7 @@ async function recordAnswer({
             ? targetPractice.type
             : null,
         targetedPracticeSessionId: targetPractice?.sessionId || null,
+        liveHintsSeen: Math.min(Math.max(Number.parseInt(liveHintsSeen, 10) || 0, 0), 50),
         targetedPracticePhase: targetedPracticeForAnswer
             ? "focused"
             : targetPractice?.completed && targetPractice.concept === realQuestion.concept
@@ -653,7 +665,7 @@ async function recordAnswer({
                 demonstratedCorrect,
 
             message:
-                misconceptionDetected
+                misconceptionDetected || incompleteSolution
                     ? analysis.misconception.message
                     : isCorrect
                         ? "Correct! Good work."
@@ -662,7 +674,7 @@ async function recordAnswer({
                             : "Your answer is incorrect. Show your working one step per line so I can identify where it went wrong.",
 
             hint:
-                misconceptionDetected
+                misconceptionDetected || incompleteSolution
                     ? analysis.misconception.hint
                     : isCorrect
                         ? ""

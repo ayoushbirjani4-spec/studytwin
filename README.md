@@ -96,7 +96,7 @@ If a student makes the same misconception at least twice, the dashboard offers *
 
 ## LLM step review
 
-Set `GEMINI_API_KEY` and `GEMINI_MODEL=gemini-3.8-flash` in `Server/.env` to enable native Gemini `generateContent` review. The key stays on the server. If Gemini is configured, it takes precedence over the legacy `LLM_*` values; a Gemini model in `LLM_MODEL` also uses `LLM_API_KEY` as a compatibility fallback. An OpenAI-compatible provider can still be configured with `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` when Gemini is not configured. Review helps interpret submitted work, including arrow chains, prose, and parser-readable equations, and can suggest one of these five step labels:
+Set `GEMINI_API_KEY` and `GEMINI_MODEL=gemini-2.5-flash` in `Server/.env` to enable native Gemini `generateContent` review. The key stays on the server. If Gemini is configured, it takes precedence over the legacy `LLM_*` values; a Gemini model in `LLM_MODEL` also uses `LLM_API_KEY` as a compatibility fallback. An OpenAI-compatible provider can still be configured with `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` when Gemini is not configured. Review helps interpret submitted work, including arrow chains, prose, and parser-readable equations, and can suggest one of these five step labels:
 
 Verify the Gemini key and live provider connection with `npm run check:gemini` from the project root. The check submits only a synthetic equation and work sample.
 
@@ -123,6 +123,8 @@ After submission, feedback shows the identified incorrect line, an equivalent co
 **Anonymous demo profiles.** Each browser independently generates a UUID student ID and a separate session token on first load, persisted in `localStorage`. There is no shared login and no name or email collected. A user can still manipulate browser state or make direct API requests; do not use this setup for real student data.
 
 ## Deploy to Vercel
+
+**Step-by-step guide: [DEPLOY.md](DEPLOY.md)** (MongoDB Atlas → ML service on Render via `render.yaml` → Vercel, with every environment variable and a verification checklist). The notes below are the background.
 
 The repository includes Vercel configuration for the static frontend and a serverless Express API. In Vercel, import the project with the project root set to this directory, then configure these environment variables before deploying:
 

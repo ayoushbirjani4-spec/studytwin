@@ -21,7 +21,11 @@ async function getCollection() {
   }
 
   if (!clientPromise) {
-    client = new MongoClient(uri);
+    // Fail fast when MongoDB is down: the driver's default 30s wait
+    // leaves the student staring at a spinner before the 503.
+    client = new MongoClient(uri, {
+      serverSelectionTimeoutMS: Number(process.env.MONGODB_TIMEOUT_MS) || 5000
+    });
     clientPromise = client.connect().catch((error) => {
       client = undefined;
       clientPromise = undefined;

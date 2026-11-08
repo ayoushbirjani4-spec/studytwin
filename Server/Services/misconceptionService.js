@@ -2001,7 +2001,200 @@ function getAlgebraicCorrectionExplanation(fromStep, correctStep) {
         return `${operation} ${Math.abs(left.b)} to both sides.`;
     }
 
+    if (linNear(left.b, 0) && !linNear(left.a, 0) && !linNear(left.a, 1)) {
+        return `Divide both sides by ${left.a}.`;
+    }
+
     return `Solve the preceding equation to get ${correctStep}.`;
+}
+
+// ============================================================
+// LIVE STEP CHECKING (while the student types)
+// ============================================================
+//
+// Deterministic only: no LLM, no ML, nothing saved. Each line is checked
+// against the line before it (the first line against the question).
+// A final "x = ..." line is deliberately not judged, so the checker
+// cannot be used to guess the answer one value at a time.
+
+const MAX_LIVE_LINES = 30;
+
+const DISTRIBUTE_FEEDBACK = {
+    message: "The number outside the brackets was not multiplied by every term inside.",
+    hint: "Multiply the number outside the brackets by each term inside, including the constant."
+};
+
+const UNCLASSIFIED_FEEDBACK = {
+    message: "This step changes the value of the equation.",
+    hint: "Check what you did to each side. Both sides must change in the same way."
+};
+
+function getQuestionStart(question) {
+    return String(question.question || "")
+        .replace(/^\s*(solve|simplify)\s*:\s*/i, "")
+        .trim();
+}
+
+// "x = 4" or "4 = x": a bare answer. Judging these live would let a student
+// guess the answer one value at a time. "x = 10-4" is still checked.
+function isBareAnswerLine(line) {
+    const sides = normalizeEquation(line).split("=");
+    if (sides.length !== 2) return false;
+    const number = /^-?\d+(?:\.\d+)?$/;
+    return (sides[0] === "x" && number.test(sides[1])) ||
+        (sides[1] === "x" && number.test(sides[0]));
+}
+
+// "valid" | "invalid" | "unreadable" for the move from one line to the next.
+function compareLines(from, to) {
+    const f = normalizeEquation(from);
+    const t = normalizeEquation(to);
+    const fe = splitEquation(f);
+    const te = splitEquation(t);
+
+    if (fe && te) {
+        if (!parseEquation(from) || !parseEquation(to)) return "unreadable";
+        return equationsEquivalent(from, to) ? "valid" : "invalid";
+    }
+    if (!fe && !te) {
+        const e1 = safeParse(f);
+        const e2 = safeParse(t);
+        if (!e1 || !e2) return "unreadable";
+        return linSame(e1, e2) ? "valid" : "invalid";
+    }
+    return "unreadable";
+}
+
+function checkSteps({ questionId, work }) {
+    const question = questionService.findQuestionById(questionId);
+    if (!question) {
+        return null;
+    }
+
+    const start = getQuestionStart(question);
+    const lines = splitWorkSteps(String(work || "").replace(/\*\s*\(/g, "("))
+        .slice(0, MAX_LIVE_LINES);
+
+    let reference = start;
+    let firstErrorIndex = null;
+
+    const steps = lines.map((line, index) => {
+        if (index === 0 && normalizeEquation(line) === normalizeEquation(start)) {
+            return { line, status: "given", label: null, message: null, hint: null };
+        }
+
+        if (isBareAnswerLine(line)) {
+            reference = line;
+            return {
+                line,
+                status: "final",
+                label: null,
+                message: "Final line: press Check Answer to see if it's right.",
+                hint: null
+            };
+        }
+
+        const status = compareLines(reference, line);
+        if (status === "unreadable") {
+            return {
+                line,
+                status,
+                label: null,
+                message: "I can't read this line as an equation yet.",
+                hint: null
+            };
+        }
+
+        const from = reference;
+        reference = line;
+
+        if (status === "valid") {
+            return { line, status, label: null, message: null, hint: null };
+        }
+
+        let label = classifyStepError(from, line) || null;
+        if (!label && from.includes("(") && !line.includes("(")) {
+            label = "failed_to_distribute";
+        }
+        const feedback = label === "failed_to_distribute"
+            ? DISTRIBUTE_FEEDBACK
+            : STEP_LABELS[label] || UNCLASSIFIED_FEEDBACK;
+
+        const isFirstError = firstErrorIndex === null;
+        if (isFirstError) {
+            firstErrorIndex = index;
+        }
+
+        return {
+            line,
+            status,
+            label,
+            message: feedback.message,
+            // Only the first mistake gets a hint, so the student fixes one thing at a time.
+            hint: isFirstError ? feedback.hint : null
+        };
+    });
+
+    return {
+        questionId: question.id,
+        steps,
+        firstErrorIndex,
+        // No "all correct" flag on purpose: the final line is never judged.
+        errorCount: steps.filter((step) => step.status === "invalid").length
+    };
+}
+
+// Every written step is valid and leads to the right answer, but the
+// student stopped before isolating x (e.g. "5x=15"). That is not a
+// misconception, so detected stays false; the feedback names the next step.
+function detectIncompleteSolution(question, work, validation) {
+    if (!validation?.available || !validation.valid) {
+        return null;
+    }
+
+    const steps = splitWorkSteps(work);
+    const lastStep = steps[steps.length - 1];
+    if (!lastStep || !parseEquation(lastStep)) {
+        return null;
+    }
+
+    // x already isolated (x=3, x=18/3, 3=x): solved, even if not evaluated.
+    const [leftSide, rightSide] = normalizeEquation(lastStep).split("=");
+    if (
+        (leftSide === "x" && !rightSide.includes("x")) ||
+        (rightSide === "x" && !leftSide.includes("x"))
+    ) {
+        return null;
+    }
+
+    const nextStep = getVerifiedAlgebraicCorrection(lastStep);
+    if (!nextStep) {
+        return null;
+    }
+
+    const solution = Number(nextStep.replace("x = ", ""));
+    const expected = Number(question.answer);
+    if (!Number.isFinite(expected) || !linNear(solution, expected)) {
+        return null;
+    }
+
+    const instruction = getAlgebraicCorrectionExplanation(lastStep, nextStep);
+
+    return {
+        detected: false,
+        type: "incomplete_solution",
+        concept: question.concept,
+        confidence: 0.9,
+        message:
+            `Your steps are right so far, but you stopped at ${lastStep} before solving for x. ` +
+            `Next: ${instruction.charAt(0).toLowerCase()}${instruction.slice(1)}`,
+        hint: instruction,
+        incorrectStep: null,
+        previousStep: lastStep,
+        correctStep: nextStep,
+        explanation: null,
+        source: "rules"
+    };
 }
 
 function diagnoseFromLlmReview({
@@ -2138,6 +2331,7 @@ async function detectMisconception(
                     diagnosis = {
                         detected: true,
                         ...dist,
+                        source: "rules",
                         explanation:
                             dist.explanation ||
                             "Multiply every term inside the parentheses by the outside coefficient.",
@@ -2243,6 +2437,7 @@ async function detectMisconception(
             return {
                 detected: true,
                 ...distributiveError,
+                source: "rules",
                 workValidation: validation,
                 mlPrediction
             };
@@ -2253,6 +2448,17 @@ async function detectMisconception(
 
         return {
             ...buildStepDiagnosis(question, stepError, false),
+            workValidation: validation,
+            mlPrediction
+        };
+    }
+
+    // Valid but unfinished working is fully explained by the rules,
+    // so there is no need to ask the LLM.
+    const incomplete = detectIncompleteSolution(question, work, validation);
+    if (incomplete) {
+        return {
+            ...incomplete,
             workValidation: validation,
             mlPrediction
         };
@@ -2352,6 +2558,8 @@ async function detectMisconception(
                 hints[type] ||
                 "Check this transformation carefully.",
 
+            source: "ml",
+
             workValidation:
                 validation,
 
@@ -2389,6 +2597,8 @@ async function detectMisconception(
 
             hint:
                 "Check what operation you performed on both sides of the equation.",
+
+            source: "rules",
 
             workValidation:
                 validation,
@@ -2720,5 +2930,7 @@ module.exports = {
 
     predictStepWithML,
 
-    validateWorkSteps
+    validateWorkSteps,
+
+    checkSteps
 };
