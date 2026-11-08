@@ -6,7 +6,7 @@ StudyTwin runs as three hosted pieces:
 |---|---|---|
 | Database | MongoDB Atlas (free M0 cluster) | none needed |
 | ML service (FastAPI) | Hugging Face Spaces (free, no card) or Render | `deploy/push_hf_space.sh`, `render.yaml`, `ML/Dockerfile` |
-| Node API + frontend | Vercel | `vercel.json`, `api/[...path].js` |
+| Node API + frontend | Vercel | `vercel.json`, `api/index.js` |
 
 Do them in this order. Each later step needs a value from an earlier one.
 
