@@ -58,6 +58,7 @@ async function get(studentId) {
     concepts: record.concepts || {},
     resetToken: record.resetToken || null,
     schemaVersion: record.schemaVersion || 1,
+    revision: record.revision || 0,
     createdAt: record.createdAt || null,
     updatedAt: record.updatedAt || null
   };
@@ -108,7 +109,28 @@ async function save(student) {
 
   doc.resetToken = student.resetToken || existing?.resetToken || null;
 
-  await collection.replaceOne({ _id: studentId }, doc, { upsert: true });
+  // Optimistic concurrency: only replace the revision this request read.
+  // If another instance saved in between, the filter misses, the upsert
+  // collides on _id, and the request fails instead of silently overwriting.
+  const expectedRevision = student.revision || 0;
+  doc.revision = expectedRevision + 1;
+  const filter = expectedRevision === 0
+    ? { _id: studentId, $or: [{ revision: { $exists: false } }, { revision: 0 }] }
+    : { _id: studentId, revision: expectedRevision };
+
+  try {
+    await collection.replaceOne(filter, doc, { upsert: true });
+  } catch (error) {
+    if (error?.code === 11000) {
+      const conflict = new Error(
+        "Your progress was updated by another request at the same time. Refresh and try again."
+      );
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+    throw error;
+  }
+  student.revision = doc.revision;
 }
 
 async function remove(studentId) {

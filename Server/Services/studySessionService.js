@@ -1718,11 +1718,33 @@ async function resetStudent(studentId, resetToken) {
 // EXPORTS
 // ============================================================
 
+// Each write reads the student record, changes it, and saves it back, so two
+// overlapping writes for one student would lose an update. Queue them per
+// student within this process; studentStore's revision check catches the
+// cross-instance case.
+const studentQueues = new Map();
+
+function withStudentLock(studentId, task) {
+    const key = String(studentId);
+    const previous = studentQueues.get(key) || Promise.resolve();
+    const run = previous.catch(() => {}).then(task);
+    const settled = run.catch(() => {});
+    studentQueues.set(key, settled);
+    settled.then(() => {
+        if (studentQueues.get(key) === settled) {
+            studentQueues.delete(key);
+        }
+    });
+    return run;
+}
+
 module.exports = {
 
-    startSession,
+    startSession: (args = {}) =>
+        withStudentLock(args.studentId, () => startSession(args)),
 
-    recordAnswer,
+    recordAnswer: (args = {}) =>
+        withStudentLock(args.studentId, () => recordAnswer(args)),
 
     getStudentProfile,
 
@@ -1730,5 +1752,6 @@ module.exports = {
 
     getAllQuestions,
 
-    resetStudent
+    resetStudent: (studentId, resetToken) =>
+        withStudentLock(studentId, () => resetStudent(studentId, resetToken))
 };

@@ -123,6 +123,14 @@ function cleanWork(work) {
         .filter(line => line.length > 0);
 }
 
+// Treat arrows and newlines as equivalent step separators so every
+// answer path validates the same transitions in the student's work.
+function splitWorkSteps(work) {
+    return cleanWork(work).flatMap(line =>
+        line.split(/\s*(?:->|=>|→|⇒)\s*/).filter(Boolean)
+    );
+}
+
 
 // ============================================================
 // 4. NORMALIZE EQUATION
@@ -1879,11 +1887,7 @@ function findArrowStepError(work) {
 
 function findFirstStepError(work) {
 
-    // Treat arrows and newlines as equivalent step separators so every
-    // answer path validates the same transitions in the student's work.
-    const steps = cleanWork(work).flatMap(line =>
-        line.split(/\s*(?:->|=>|→|⇒)\s*/).filter(Boolean)
-    );
+    const steps = splitWorkSteps(work);
 
     for (let i = 1; i < steps.length; i++) {
 
@@ -2004,7 +2008,11 @@ function diagnoseFromLlmReview({
         return null;
     }
 
-    const workLines = cleanWork(work);
+    // Match a whole submitted line, or one step of an arrow chain "a -> b -> c".
+    const submittedLines = cleanWork(work);
+    const workLines = submittedLines.includes(llmReview.incorrectStep)
+        ? submittedLines
+        : splitWorkSteps(work);
     if (
         typeof llmReview.incorrectStep !== "string" ||
         !workLines.includes(llmReview.incorrectStep)

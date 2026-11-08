@@ -133,6 +133,12 @@ async function reviewSubmission({
           generationConfig: {
             temperature: 0,
             maxOutputTokens: 1024,
+            // Gemini 2.5 "thinking" tokens count against maxOutputTokens and
+            // can truncate the JSON mid-string. This task needs no thinking.
+            // Only 2.5 Flash models accept a zero budget (2.5 Pro rejects it).
+            ...(/^gemini-2\.5-flash/i.test(config.model)
+              ? { thinkingConfig: { thinkingBudget: 0 } }
+              : {}),
             responseMimeType: "application/json",
             responseSchema: {
               type: "OBJECT",
@@ -185,6 +191,13 @@ async function reviewSubmission({
           .join("\n")
       : payload.choices?.[0]?.message?.content;
 
+    const finishReason = isGemini
+      ? payload.candidates?.[0]?.finishReason
+      : payload.choices?.[0]?.finish_reason;
+    if (finishReason === "MAX_TOKENS" || finishReason === "length") {
+      throw new Error("LLM API response was cut off at the output token limit.");
+    }
+
     if (typeof content !== "string") {
       throw new Error("LLM API returned no review content.");
     }
@@ -209,11 +222,16 @@ async function reviewSubmission({
       throw new Error("LLM API returned an invalid confidence.");
     }
 
-    const workLines = String(work)
+    // Accept a whole submitted line or one step of an arrow chain
+    // ("a -> b -> c"), split the same way the rule engine does.
+    const lines = String(work)
       .slice(0, MAX_WORK_LENGTH)
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
+    const workLines = lines.concat(
+      lines.flatMap((line) => line.split(/\s*(?:->|=>|→|⇒)\s*/).filter(Boolean))
+    );
 
     if (
       review.incorrect_step !== null &&

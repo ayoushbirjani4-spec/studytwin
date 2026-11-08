@@ -36,6 +36,7 @@ const state = {
   question: null,
   questionNumber: 0,
   answered: false,
+  submitting: false,
   targetedPractice: null,
   stats: {
     attempts: 0,
@@ -469,7 +470,8 @@ function renderFeedback(data) {
 }
 
 async function submitAnswer() {
-  if (!state.question || state.answered) {
+  // The Enter key bypasses the disabled button, so guard in-flight requests here.
+  if (!state.question || state.answered || state.submitting) {
     return;
   }
 
@@ -501,6 +503,7 @@ async function submitAnswer() {
 
   hideError();
 
+  state.submitting = true;
   $("submitButton").disabled = true;
 
   $("submitButton").innerHTML =
@@ -541,6 +544,8 @@ async function submitAnswer() {
 
     $("submitButton").innerHTML =
       'Check Answer <span>→</span>';
+  } finally {
+    state.submitting = false;
   }
 }
 
