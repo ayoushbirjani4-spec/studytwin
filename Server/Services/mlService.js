@@ -32,6 +32,11 @@ const axios = require("axios");
 const ML_API_URL =
     process.env.ML_API_URL || "http://127.0.0.1:8000";
 
+// Without a timeout a hung or cold-starting FastAPI host would hold the
+// student's request open indefinitely. Callers fall back to a heuristic.
+const ML_TIMEOUT_MS =
+    Number(process.env.ML_TIMEOUT_MS) || 5000;
+
 
 // ============================================================
 // CHECK ML SERVICE
@@ -42,7 +47,8 @@ async function checkMLHealth() {
     try {
 
         const response = await axios.get(
-            `${ML_API_URL}/health`
+            `${ML_API_URL}/health`,
+            { timeout: ML_TIMEOUT_MS }
         );
 
         return {
@@ -84,7 +90,8 @@ async function predictStudent(studentData) {
                 previous_correct:
                     studentData.previous_correct,
                 concept: studentData.concept
-            }
+            },
+            { timeout: ML_TIMEOUT_MS }
         );
 
 
@@ -137,7 +144,15 @@ async function getLearningRecommendation(studentData) {
 
 
     const mlData =
-        result.data.data;
+        result.data?.data;
+
+    if (result.data?.success === false || !mlData) {
+
+        return {
+            success: false,
+            error: "ML service returned no prediction."
+        };
+    }
 
 
     return {

@@ -1614,7 +1614,12 @@ async function predictStepWithML(
 
                             current_step:
                                 currentStep
-                        })
+                        }),
+
+                    // A hung ML host must not hold the student's request open.
+                    signal: AbortSignal.timeout(
+                        Number(process.env.ML_TIMEOUT_MS) || 5000
+                    )
                 }
             );
 
@@ -1644,16 +1649,22 @@ async function predictStepWithML(
         );
 
 
-        return (
-            result.data ||
-            result
-        );
+        // FastAPI reports its own failures as HTTP 200 with success:false.
+        if (result?.success === false || !result?.data) {
+            console.error(
+                "ML step prediction unavailable:",
+                result?.error || "no prediction data"
+            );
+            return null;
+        }
+
+        return result.data;
 
     } catch (error) {
 
         console.error(
             "Unable to get prediction from ML service:",
-            error
+            error.message
         );
 
         return null;
@@ -2074,7 +2085,7 @@ async function detectMisconception(
     studentAnswer,
     work,
     {
-        llmReview
+        getLlmReview = async () => null
     } = {}
 ) {
 
@@ -2086,14 +2097,18 @@ async function detectMisconception(
     const validation =
         validateWorkSteps(work);
 
-    const llmDiagnosis = llmReview
-        ? diagnoseFromLlmReview({
-            question,
-            work: submittedWork,
-            finalAnswerCorrect: correct,
-            llmReview
-        })
-        : null;
+    // Called only on paths where the rules found no diagnosis.
+    const getLlmDiagnosis = async () => {
+        const llmReview = await getLlmReview();
+        return llmReview
+            ? diagnoseFromLlmReview({
+                question,
+                work: submittedWork,
+                finalAnswerCorrect: correct,
+                llmReview
+            })
+            : null;
+    };
 
 
     // ========================================================
@@ -2139,6 +2154,15 @@ async function detectMisconception(
                 };
             }
         }
+
+        // Every written step was checked and is algebraically equivalent
+        // to the one before it, so there is nothing left for the LLM to find.
+        const workFullyVerified =
+            validation.available && validation.valid && validation.steps.length > 1;
+
+        const llmDiagnosis = workFullyVerified
+            ? null
+            : await getLlmDiagnosis();
 
         if (llmDiagnosis) {
             return {
@@ -2229,6 +2253,8 @@ async function detectMisconception(
             mlPrediction
         };
     }
+
+    const llmDiagnosis = await getLlmDiagnosis();
 
     if (llmDiagnosis) {
         return {
@@ -2426,21 +2452,24 @@ async function analyzeAnswer({
     }
 
 
-    let llmReview = null;
-
-    try {
-        llmReview = await llmReviewService.reviewSubmission({
-            question: question.question,
-            studentAnswer,
-            correctAnswer: question.answer,
-            work
-        });
-    } catch (error) {
-        console.error(
-            "LLM work review failed; continuing with deterministic analysis:",
-            error.message
-        );
-    }
+    // The LLM is slow and paid for, so detectMisconception() asks for it
+    // only when the deterministic rules cannot settle the diagnosis.
+    const getLlmReview = async () => {
+        try {
+            return await llmReviewService.reviewSubmission({
+                question: question.question,
+                studentAnswer,
+                correctAnswer: question.answer,
+                work
+            });
+        } catch (error) {
+            console.error(
+                "LLM work review failed; continuing with deterministic analysis:",
+                error.message
+            );
+            return null;
+        }
+    };
 
     const correct = isAnswerCorrect(studentAnswer, question.answer);
 
@@ -2450,7 +2479,7 @@ async function analyzeAnswer({
             studentAnswer,
             work,
             {
-                llmReview
+                getLlmReview
             }
         );
 

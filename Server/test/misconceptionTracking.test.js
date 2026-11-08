@@ -47,6 +47,8 @@ test("recurring misconceptions retain timestamps and identify their concept", as
     work: "2(x+3)=14\n2x+3=14\n2x=11\nx=5.5"
   };
   await studySessionService.recordAnswer(submission);
+  // Simulate the server issuing dp_001 again so the repeat is accepted.
+  records.get(studentId).issuedQuestionIds.push("dp_001");
   await studySessionService.recordAnswer(submission);
 
   const profile = await studySessionService.getStudentProfile(studentId);

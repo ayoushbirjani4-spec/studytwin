@@ -38,7 +38,13 @@ function geminiResponse(review, finishReason = "STOP") {
 }
 
 test("two simultaneous submissions for one student both count", async (t) => {
-  const records = new Map();
+  // Two different issued questions, so the replay guard accepts both.
+  const records = new Map([["race-student", {
+    studentId: "race-student",
+    resetToken: "race-token",
+    concepts: {},
+    issuedQuestionIds: ["dp_001", "dp_002"]
+  }]]);
   t.mock.method(studentStore, "get", async (studentId) => {
     const record = records.get(studentId);
     // Yield so two unlocked requests would both read the same old state.
@@ -68,10 +74,77 @@ test("two simultaneous submissions for one student both count", async (t) => {
 
   await Promise.all([
     studySessionService.recordAnswer(submission),
-    studySessionService.recordAnswer(submission)
+    studySessionService.recordAnswer({
+      ...submission,
+      question: { id: "dp_002" },
+      studentAnswer: "3",
+      work: "3(x+2)=15\n3x+6=15\n3x=9\nx=3"
+    })
   ]);
 
   assert.equal(records.get("race-student").concepts.distributive_property.attempts, 2);
+});
+
+test("a double-sent answer to the same question is counted once", async (t) => {
+  const records = new Map([["double-student", {
+    studentId: "double-student",
+    resetToken: "double-token",
+    concepts: {},
+    issuedQuestionIds: ["dp_001"]
+  }]]);
+  t.mock.method(studentStore, "get", async (studentId) =>
+    records.has(studentId) ? structuredClone(records.get(studentId)) : null
+  );
+  t.mock.method(studentStore, "save", async (student) => {
+    records.set(student.studentId, structuredClone(student));
+  });
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  t.mock.method(mlService, "getLearningRecommendation", async () => ({ success: false }));
+
+  const submission = {
+    studentId: "double-student",
+    resetToken: "double-token",
+    question: { id: "dp_001" },
+    studentAnswer: "4",
+    work: "2(x+3)=14\n2x+6=14\n2x=8\nx=4"
+  };
+
+  const results = await Promise.allSettled([
+    studySessionService.recordAnswer(submission),
+    studySessionService.recordAnswer(submission)
+  ]);
+
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(results.find((r) => r.status === "rejected").reason.statusCode, 409);
+  assert.equal(records.get("double-student").concepts.distributive_property.attempts, 1);
+});
+
+test("an issued next question is accepted and the answered one is not", async (t) => {
+  const records = new Map();
+  t.mock.method(studentStore, "get", async (studentId) =>
+    records.has(studentId) ? structuredClone(records.get(studentId)) : null
+  );
+  t.mock.method(studentStore, "save", async (student) => {
+    records.set(student.studentId, structuredClone(student));
+  });
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  t.mock.method(mlService, "getLearningRecommendation", async () => ({ success: false }));
+
+  const session = await studySessionService.startSession({
+    studentId: "issued-student",
+    resetToken: "issued-token",
+    concept: "distributive_property"
+  });
+  const first = await studySessionService.recordAnswer({
+    studentId: "issued-student",
+    resetToken: "issued-token",
+    question: { id: session.question.id },
+    studentAnswer: "0",
+    work: ""
+  });
+
+  assert.ok(first.nextQuestion);
+  assert.deepEqual(records.get("issued-student").issuedQuestionIds, [first.nextQuestion.id]);
 });
 
 test("a failed submission does not block the next one for that student", async (t) => {
@@ -206,4 +279,21 @@ test("an LLM step taken from arrow-chain working is accepted", async (t) => {
 
   assert.equal(review.label, "wrong_inverse_op");
   assert.equal(review.incorrectStep, "x = 10 - 4");
+});
+
+test("ML calls have a timeout and a success:false reply is not used as a prediction", async (t) => {
+  const axios = require("axios");
+  let options;
+  t.mock.method(axios, "post", async (_url, _body, requestOptions) => {
+    options = requestOptions;
+    return { data: { success: false, error: "model not loaded" } };
+  });
+
+  const result = await mlService.getLearningRecommendation({
+    difficulty: 1, attempt_count: 1, correct_rate: 0, recent_accuracy: 0,
+    misconception_count: 0, previous_correct: 0, concept: "distributive_property"
+  });
+
+  assert.ok(options.timeout > 0);
+  assert.equal(result.success, false);
 });

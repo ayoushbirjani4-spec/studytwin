@@ -77,6 +77,8 @@ test("targeted misconception practice progresses and records matching errors", a
     row.targetedPracticeSessionId === profile.targetedPractice.sessionId
   ));
 
+  // Simulate the server later issuing dp_004 (same concept, after practice).
+  records.get(studentId).issuedQuestionIds.push("dp_004");
   await studySessionService.recordAnswer({
     studentId,
     resetToken: "browser-token",

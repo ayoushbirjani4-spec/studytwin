@@ -136,12 +136,24 @@ test("deterministic answer checking controls progress regardless of an LLM answe
   assert.equal(result.answer.correct, false);
   assert.equal(result.answer.checkedBy, "rules");
 
+  // Resubmitting the answered question (e.g. after seeing the solution) is refused.
+  await assert.rejects(
+    studySessionService.recordAnswer({
+      studentId,
+      resetToken: "test-token",
+      question: { id: session.question.id },
+      studentAnswer: questionService.getQuestionById(session.question.id).answer,
+      work: ""
+    }),
+    (error) => error.statusCode === 409
+  );
+
   llmAnswerClaim = false;
   const correctlyAnswered = await studySessionService.recordAnswer({
     studentId,
     resetToken: "test-token",
-    question: { id: session.question.id },
-    studentAnswer: questionService.getQuestionById(session.question.id).answer,
+    question: { id: result.nextQuestion.id },
+    studentAnswer: questionService.getQuestionById(result.nextQuestion.id).answer,
     work: ""
   });
   assert.equal(correctlyAnswered.answer.correct, true);
@@ -152,7 +164,7 @@ test("deterministic answer checking controls progress regardless of an LLM answe
   assert.equal(profile.overall.correct, 1);
 });
 
-test("each submission is checked by the LLM and uses only the five step-rule labels", async (t) => {
+test("the LLM is consulted only when the rules cannot diagnose the work", async (t) => {
   let request;
   let reviewCalls = 0;
 
@@ -176,19 +188,19 @@ test("each submission is checked by the LLM and uses only the five step-rule lab
     work: "3x=18 -> x=18*3 -> x=54"
   });
 
+  // The rules diagnose this one themselves, so the LLM is never called.
   assert.equal(result.correct, false);
-  assert.equal(reviewCalls, 1);
+  assert.equal(reviewCalls, 0);
   assert.equal(result.correctnessSource, "rules");
   assert.equal(result.misconception.type, "wrong_inverse_op");
   assert.equal(result.misconception.source, "rules");
-  assert.equal(request.question, questionService.getQuestionById("io_003").question);
-  assert.equal(request.correctAnswer, questionService.getQuestionById("io_003").answer);
   assert.equal(result.misconception.confidence, 0.9);
   assert.equal(
     result.misconception.incorrectStep,
     "x=18*3"
   );
 
+  // Valid steps but a wrong final answer: the rules cannot explain it.
   const parsedWorkResult = await misconceptionService.analyzeAnswer({
     questionId: "io_003",
     studentAnswer: "54",
@@ -199,12 +211,32 @@ test("each submission is checked by the LLM and uses only the five step-rule lab
     parsedWorkResult.misconception.type,
     "unknown_error"
   );
-  assert.equal(reviewCalls, 2);
+  assert.equal(reviewCalls, 1);
+  assert.equal(request.question, questionService.getQuestionById("io_003").question);
+  assert.equal(request.correctAnswer, questionService.getQuestionById("io_003").answer);
   assert.equal(
     request.work,
     "3x=18\nx=18/3",
     "the LLM should review parser-readable work too"
   );
+});
+
+test("correct answers with fully verified working skip the LLM", async (t) => {
+  let reviewCalls = 0;
+  t.mock.method(llmReviewService, "reviewSubmission", async () => {
+    reviewCalls += 1;
+    return null;
+  });
+
+  const result = await misconceptionService.analyzeAnswer({
+    questionId: "dp_001",
+    studentAnswer: "4",
+    work: "2(x+3)=14\n2x+6=14\n2x=8\nx=4"
+  });
+
+  assert.equal(result.correct, true);
+  assert.equal(result.misconception.detected, false);
+  assert.equal(reviewCalls, 0);
 });
 
 test("an LLM with no step diagnosis does not suppress deterministic rules or ML", async (t) => {

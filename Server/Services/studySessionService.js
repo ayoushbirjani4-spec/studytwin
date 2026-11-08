@@ -111,6 +111,18 @@ async function getStudent(studentId, concept) {
 }
 
 
+// Questions served but not yet answered. Capped so abandoned questions
+// (closed tabs, skipped sessions) do not accumulate forever.
+const MAX_ISSUED_QUESTIONS = 10;
+
+function issueQuestion(student, questionId) {
+    const issued = (student.issuedQuestionIds || [])
+        .filter((id) => id !== questionId);
+    issued.push(questionId);
+    student.issuedQuestionIds = issued.slice(-MAX_ISSUED_QUESTIONS);
+}
+
+
 // ============================================================
 // CALCULATE ACCURACY
 // ============================================================
@@ -263,15 +275,43 @@ async function recordAnswer({
 
 
     // --------------------------------------------------------
-    // Analyze answer
+    // Get student state (before analysis, so a wrong token or a
+    // replayed question is rejected without paying for the LLM)
     // --------------------------------------------------------
-    //
-    // IMPORTANT:
-    // analyzeAnswer() is asynchronous because it calls
-    // the FastAPI ML service.
-    //
-    // Therefore we MUST await it.
-    //
+
+    const { student, state } =
+        await getStudent(
+            studentId,
+            realQuestion.concept
+        );
+
+    if (resetToken) {
+        if (student.resetToken && student.resetToken !== resetToken) {
+            throw requestError("Invalid student session token.", 403);
+        }
+        if (!student.resetToken) {
+            student.resetToken = resetToken;
+        }
+    }
+
+    // Once the server has issued questions to this student, only accept
+    // answers to those questions, and score each one once. This stops a
+    // student from reading the worked solution and resubmitting it.
+    if (Array.isArray(student.issuedQuestionIds)) {
+        if (!student.issuedQuestionIds.includes(realQuestion.id)) {
+            throw requestError(
+                "This question has already been answered or was not issued in this session. Load a new question.",
+                409
+            );
+        }
+        student.issuedQuestionIds =
+            student.issuedQuestionIds.filter((id) => id !== realQuestion.id);
+    }
+
+
+    // --------------------------------------------------------
+    // Analyze answer (async: may call the LLM and FastAPI)
+    // --------------------------------------------------------
 
     const analysis =
         await misconceptionService.analyzeAnswer({
@@ -310,25 +350,6 @@ async function recordAnswer({
     const hasSubmittedWork =
         String(work || "").trim().length > 0;
 
-
-    // --------------------------------------------------------
-    // Get student state
-    // --------------------------------------------------------
-
-    const { student, state } =
-        await getStudent(
-            studentId,
-            realQuestion.concept
-        );
-
-    if (resetToken) {
-        if (student.resetToken && student.resetToken !== resetToken) {
-            throw requestError("Invalid student session token.", 403);
-        }
-        if (!student.resetToken) {
-            student.resetToken = resetToken;
-        }
-    }
 
 
     // ========================================================
@@ -585,6 +606,10 @@ async function recordAnswer({
                 ? "follow_up"
                 : null
     });
+
+    if (nextQuestion) {
+        issueQuestion(student, nextQuestion.id);
+    }
 
     await studentStore.save(student);
 
@@ -947,6 +972,8 @@ async function startSession({
             questionIds: [question.id]
         };
     }
+
+    issueQuestion(student, question.id);
 
     await studentStore.save(student);
 
