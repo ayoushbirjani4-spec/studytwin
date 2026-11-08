@@ -297,3 +297,22 @@ test("ML calls have a timeout and a success:false reply is not used as a predict
   assert.ok(options.timeout > 0);
   assert.equal(result.success, false);
 });
+
+test("valid distributive work that stops early is not called a distribution error", async (t) => {
+  let reviewCalls = 0;
+  t.mock.method(llmReviewService, "reviewSubmission", async () => {
+    reviewCalls += 1;
+    return null;
+  });
+  const misconceptionService = require("../Services/misconceptionService");
+
+  const result = await misconceptionService.analyzeAnswer({
+    questionId: "dp_002",
+    studentAnswer: "9",
+    work: "3(x+2)=15\n3x+6=15\n3x=9"
+  });
+
+  assert.equal(result.correct, false);
+  assert.notEqual(result.misconception.type, "possible_distribution_error");
+  assert.equal(reviewCalls, 1, "the rules cannot explain it, so the LLM is asked");
+});

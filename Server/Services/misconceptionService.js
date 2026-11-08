@@ -1555,7 +1555,11 @@ function detectDistributiveMisconception(
             "distributive_property"
     ) {
 
+        // Only guess at a distribution error when some step is actually
+        // invalid. Valid work (e.g. 3x+6=15 -> 3x=9, stopped early) must
+        // fall through so the LLM or "unknown" path can explain it.
         if (
+            validation?.invalidStep &&
             text.includes("(") &&
             /\d+x[+-]\d+/.test(text)
         ) {

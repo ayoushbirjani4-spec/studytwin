@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ml",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "api:app", "--app-dir", "ML", "--host", "127.0.0.1", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["Server/index.js"],
+      "port": 3000
+    }
+  ]
+}
