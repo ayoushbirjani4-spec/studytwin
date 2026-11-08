@@ -5,7 +5,7 @@ StudyTwin runs as three hosted pieces:
 | Piece | Host | Config in this repo |
 |---|---|---|
 | Database | MongoDB Atlas (free M0 cluster) | none needed |
-| ML service (FastAPI) | Render (free web service, Docker) | `render.yaml`, `ML/Dockerfile` |
+| ML service (FastAPI) | Hugging Face Spaces (free, no card) or Render | `deploy/push_hf_space.sh`, `render.yaml`, `ML/Dockerfile` |
 | Node API + frontend | Vercel | `vercel.json`, `api/[...path].js` |
 
 Do them in this order. Each later step needs a value from an earlier one.
@@ -36,7 +36,26 @@ Do them in this order. Each later step needs a value from an earlier one.
    `mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority`
    Keep it for step 3. The app creates its collections on first use.
 
-## 2. ML service on Render
+## 2. ML service
+
+Use **Option A** unless you already have a card on Render: Render asks for one even on its free plan.
+
+### Option A: Hugging Face Spaces (free, no card)
+
+1. Create a free account at huggingface.co and confirm your email.
+2. At huggingface.co/new-space create a Space named `studytwin-ml`, visibility **Public** (the Node API calls it without a token). Any SDK and free hardware is fine: the push script makes it a Gradio Space, which runs on **CPU basic** and also on **ZeroGPU** (the only option some free accounts get; the app declares a placeholder GPU function but never uses the GPU).
+3. At huggingface.co/settings/tokens create a token of type **Write**.
+4. From the repository root:
+   ```bash
+   bash deploy/push_hf_space.sh <hf-username>/studytwin-ml
+   ```
+   When Git asks you to sign in, the username is your Hugging Face username and the password is the `hf_...` token (not your account password).
+5. Wait for the Space page to show **Running** (5 to 10 minutes), then open `https://<hf-username>-studytwin-ml.hf.space/health`.
+6. Keep that base URL for step 3. To redeploy after changing `ML/`, commit and run the script again.
+
+Free Spaces sleep after a long idle period and take a minute or so to wake; the app falls back to its heuristic meanwhile.
+
+### Option B: Render
 
 1. At dashboard.render.com: **New → Blueprint**, connect GitHub, pick this repository. Render reads `render.yaml` and creates `studytwin-ml`.
 2. Wait for the first build (several minutes: it installs scikit-learn and trains the student model inside the image).
@@ -57,7 +76,7 @@ Free Render instances sleep after about 15 minutes idle and take up to a minute 
 |---|---|---|
 | `MONGODB_URI` | Atlas connection string from step 1 | Yes |
 | `MONGODB_DB_NAME` | `studytwin` | Yes |
-| `ML_API_URL` | Render base URL from step 2 | Yes, for ML predictions |
+| `ML_API_URL` | ML service base URL from step 2 (`https://<user>-studytwin-ml.hf.space` or your Render URL) | Yes, for ML predictions |
 | `GEMINI_API_KEY` | your new Gemini key | Yes, for LLM review |
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Recommended |
 | `TRUST_PROXY_HOPS` | `1` | Recommended (rate limiting sees real client IPs behind Vercel's proxy) |

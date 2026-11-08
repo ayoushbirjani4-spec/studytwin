@@ -1,0 +1,5 @@
+# Installed by Hugging Face alongside Gradio (which brings FastAPI and Uvicorn).
+# These match ML/requirements.txt so the bundled step model (a pickle) loads.
+scikit-learn==1.8.0
+numpy==2.3.5
+pandas==2.3.3
