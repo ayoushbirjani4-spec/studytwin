@@ -16,6 +16,31 @@ function configuredSettings() {
   };
 }
 
+// A short code for why MongoDB failed, safe to show publicly (no details).
+function classifyDatabaseError(error) {
+  // The driver often wraps the real cause (e.g. a bad password) inside a
+  // server-selection error, so read the nested messages too.
+  const message = [error, error?.cause, error?.reason, ...Object.values(error?.reason?.servers || {}).map((s) => s?.error)]
+    .map((e) => String(e?.message || ""))
+    .join(" | ");
+  if (/MONGODB_URI must be configured/.test(message)) {
+    return "database_not_configured";        // variable missing
+  }
+  if (error?.name === "MongoParseError" || /Invalid scheme|URI must include|Invalid connection string/i.test(message)) {
+    return "database_uri_invalid";           // malformed connection string
+  }
+  if (error?.code === 18 || /bad auth|authentication failed/i.test(message)) {
+    return "database_auth_failed";           // wrong username or password
+  }
+  if (/querySrv|ENOTFOUND|getaddrinfo/i.test(message)) {
+    return "database_host_not_found";        // wrong cluster address
+  }
+  if (error?.name === "MongoServerSelectionError") {
+    return "database_unreachable";           // e.g. IP not allowed in Atlas
+  }
+  return "database_connection_failed";
+}
+
 module.exports = async function handler(request, response) {
   const path = (request.url || "").split("?")[0];
 
@@ -38,11 +63,10 @@ module.exports = async function handler(request, response) {
 
     // Say which kind of failure it is (never any connection details), so a
     // missing environment variable is distinguishable from a refused login.
-    const notConfigured = /MONGODB_URI must be configured/.test(String(error?.message));
     return response.status(503).json({
       success: false,
       error: "Student progress storage is unavailable.",
-      reason: notConfigured ? "database_not_configured" : "database_connection_failed"
+      reason: classifyDatabaseError(error)
     });
   }
 };
