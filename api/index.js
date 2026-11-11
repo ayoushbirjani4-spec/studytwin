@@ -16,6 +16,27 @@ function configuredSettings() {
   };
 }
 
+// Yes/no checks on the connection string's format. Reveals no part of it
+// (no host, user or password), only whether common copy-paste mistakes exist.
+function describeMongoUri(raw) {
+  if (!raw) return null;
+  const value = String(raw);
+  const trimmed = value.trim();
+  const afterScheme = trimmed.replace(/^mongodb(\+srv)?:\/\//, "");
+  const credentials = afterScheme.includes("@") ? afterScheme.slice(0, afterScheme.lastIndexOf("@")) : "";
+  return {
+    startsWithMongodbScheme: /^mongodb(\+srv)?:\/\//.test(trimmed),
+    hasLeadingOrTrailingSpace: value !== trimmed,
+    containsLineBreak: /[\r\n]/.test(value),
+    wrappedInQuotes: /^["'].*["']$/.test(trimmed),
+    includesVariableName: /MONGODB_URI\s*=/.test(trimmed),
+    stillHasPasswordPlaceholder: /<db_password>|<password>/.test(trimmed),
+    atSignCount: (afterScheme.match(/@/g) || []).length,          // should be 1
+    passwordHasUnencodedSpecialChars: /[:/?#[\]@]/.test(credentials.split(":").slice(1).join(":")),
+    length: value.length
+  };
+}
+
 // A short code for why MongoDB failed, safe to show publicly (no details).
 function classifyDatabaseError(error) {
   // The driver often wraps the real cause (e.g. a bad password) inside a
@@ -49,7 +70,8 @@ module.exports = async function handler(request, response) {
     return response.status(200).json({
       status: "ok",
       environment: process.env.VERCEL_ENV || "unknown",
-      settings: configuredSettings()
+      settings: configuredSettings(),
+      mongodbUriShape: describeMongoUri(process.env.MONGODB_URI)
     });
   }
 
