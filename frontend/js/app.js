@@ -1043,7 +1043,7 @@ function escapeHtml(value) {
 
 async function checkConnection() {
   try {
-    await api("/health");
+    await api("/api/health");
 
     $("connectionStatus").innerHTML =
       '<span class="status-dot"></span> API connected';

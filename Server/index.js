@@ -98,7 +98,9 @@ app.get("/", (req, res) => {
 });
 
 
-app.get("/health", (req, res) => {
+// /api/health is the same check under /api, the only path Vercel routes to
+// the API (see api/index.js); the frontend uses it.
+app.get(["/health", "/api/health"], (req, res) => {
 
     res.json({
         status: "healthy",
