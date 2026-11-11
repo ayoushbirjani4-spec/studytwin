@@ -56,6 +56,9 @@ function classifyDatabaseError(error) {
   if (/querySrv|ENOTFOUND|getaddrinfo/i.test(message)) {
     return "database_host_not_found";        // wrong cluster address
   }
+  if (/SSL alert number 80|tlsv1 alert internal error/i.test(message)) {
+    return "database_ip_not_allowed";        // Atlas IP Access List blocks this server
+  }
   if (error?.name === "MongoServerSelectionError") {
     return "database_unreachable";           // e.g. IP not allowed in Atlas
   }
