@@ -68,3 +68,11 @@
 .twin-line-note{flex-basis:100%;padding-left:36px;font-size:12px;font-weight:650}
 .twin-line-note[data-kind="fine"]{color:var(--success)}
 .twin-line-note[data-kind="found"]{color:var(--danger)}
+.twin-progress{margin-top:16px}
+.twin-progress-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;font-size:12px;font-weight:700}
+.twin-progress-habit{color:var(--muted);font-weight:600}
+.twin-progress-track{height:7px;margin-top:7px;background:#e9ecf2;border-radius:99px;overflow:hidden}
+.twin-progress-fill{height:100%;width:0;background:var(--success);border-radius:inherit;transition:width .4s ease}
+.twin-result-learned{background:#eef8ff;border-color:#b9dcf5}
+.twin-result-learned strong{color:#1d5f8f}
+@media(prefers-reduced-motion:reduce){.twin-progress-fill{transition:none}}

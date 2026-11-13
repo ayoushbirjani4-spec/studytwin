@@ -434,20 +434,36 @@ app.post(
             let type = misconceptionType;
             let lessonConcept = typeof concept === "string" ? concept : null;
             let personalised = false;
+            let reviewing = false;
+            let mistakes = [];
+            let memory = null;
+            const exclude = Array.isArray(excludeQuestionIds)
+                ? excludeQuestionIds.filter((id) => typeof id === "string").slice(0, 50)
+                : [];
 
-            // Default: the student's most frequent mistake the twin can make.
-            if (!type && typeof studentId === "string" && studentId) {
+            // The student's own mistakes and the twin's memory of them.
+            if (typeof studentId === "string" && studentId) {
                 const allowed = await verifyStudentToken(req, res, studentId);
                 if (!allowed) {
                     return;
                 }
-                const profile = await studySessionService.getStudentProfile(studentId);
-                const top = (profile?.commonMistakes || [])
-                    .find((mistake) => twinService.TWIN_MISCONCEPTIONS.includes(mistake.type));
-                if (top) {
-                    type = top.type;
-                    lessonConcept = lessonConcept || top.concept;
-                    personalised = true;
+                const [profile, twinContext] = await Promise.all([
+                    studySessionService.getStudentProfile(studentId),
+                    studySessionService.getTwinContext(studentId)
+                ]);
+                mistakes = profile?.commonMistakes || [];
+                memory = twinContext.memory;
+                // Fresh problems: not ones just practised or recently taught.
+                exclude.push(...twinContext.recentQuestionIds);
+
+                if (!type) {
+                    const choice = twinService.chooseTwinMisconception(mistakes, memory);
+                    if (choice) {
+                        type = choice.type;
+                        lessonConcept = lessonConcept || choice.concept;
+                        reviewing = choice.reviewing;
+                        personalised = true;
+                    }
                 }
             }
 
@@ -458,9 +474,7 @@ app.post(
             const lesson = twinService.findTwinLesson({
                 misconceptionType: type,
                 concept: lessonConcept,
-                excludeQuestionIds: Array.isArray(excludeQuestionIds)
-                    ? excludeQuestionIds.filter((id) => typeof id === "string").slice(0, 50)
-                    : []
+                excludeQuestionIds: exclude
             });
 
             if (!lesson) {
@@ -476,6 +490,10 @@ app.post(
             res.json({
                 success: true,
                 personalised,
+                reviewing,
+                progress: personalised
+                    ? twinService.summariseTwinProgress(mistakes, memory, type)
+                    : null,
                 lesson: { ...publicLesson, twinAnswer }
             });
 
@@ -526,6 +544,7 @@ function gradeTwinCorrection(questionId, previousLine, correctedLine) {
 const TWIN_REPLIES = {
     wrongLine: "Hmm, I think that line is fine. Can you look again?",
     fixed: "Oh! I see what I did wrong. Thanks for teaching me!",
+    learned: "I've got it now! You taught me so well that I won't make that mistake again.",
     notFixed: "That's the line I got wrong, but I'm still confused. Can you show me the right step?",
     foundOnly: "You're right, that's where I went wrong! How should that line look?"
 };
@@ -533,8 +552,9 @@ const TWIN_REPLIES = {
 app.post(
     "/api/twin/check",
     stepCheckRateLimiter,
-    (req, res) => {
+    async (req, res) => {
         const {
+            studentId,
             questionId,
             misconceptionType,
             chosenIndex,
@@ -562,6 +582,29 @@ app.post(
         const fixedIt = foundMistake && hasCorrection &&
             gradeTwinCorrection(questionId, lesson.lines[lesson.wrongIndex - 1], correctedLine);
 
+        // Remember the teaching. A storage problem must not cost the student
+        // their result, so failures are reported, not thrown.
+        let memory = null;
+        if (fixedIt && typeof studentId === "string" && studentId) {
+            try {
+                const recorded = await studySessionService.recordTwinTeaching(
+                    studentId,
+                    req.get("X-Student-Token"),
+                    { misconceptionType, questionId }
+                );
+                memory = {
+                    remembered: true,
+                    counted: recorded.counted,
+                    justLearned: recorded.justLearned,
+                    taught: Math.min(recorded.memory.taught[misconceptionType] || 0, twinService.LEARN_THRESHOLD),
+                    needed: twinService.LEARN_THRESHOLD
+                };
+            } catch (error) {
+                console.error("Twin memory error:", error.message);
+                memory = { remembered: false };
+            }
+        }
+
         res.json({
             success: true,
             foundMistake,
@@ -569,10 +612,11 @@ app.post(
             // Revealed only once the student has taught the twin successfully.
             mistakeIndex: fixedIt ? lesson.wrongIndex : null,
             correctAnswer: fixedIt ? lesson.correctAnswer : null,
+            memory,
             twinSays: !foundMistake
                 ? TWIN_REPLIES.wrongLine
                 : fixedIt
-                    ? TWIN_REPLIES.fixed
+                    ? (memory?.justLearned ? TWIN_REPLIES.learned : TWIN_REPLIES.fixed)
                     : hasCorrection
                         ? TWIN_REPLIES.notFixed
                         : TWIN_REPLIES.foundOnly

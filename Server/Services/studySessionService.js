@@ -29,6 +29,7 @@ const misconceptionService = require("./misconceptionService");
 const mlService = require("./mlService");
 const studentStore = require("./studentStore");
 const attemptLogStore = require("./attemptLogStore");
+const twinService = require("./twinService");
 const { randomUUID } = require("node:crypto");
 
 
@@ -1754,6 +1755,57 @@ async function resetStudent(studentId, resetToken) {
 
 
 // ============================================================
+// TEACH YOUR TWIN: memory
+// ============================================================
+
+// What the twin needs to pick a lesson: its memory, and the questions the
+// student has seen recently (so the twin uses a fresh problem).
+async function getTwinContext(studentId) {
+    const student = await studentStore.get(studentId);
+    if (!student) {
+        return { memory: null, recentQuestionIds: [] };
+    }
+    const practised = Object.values(student.concepts || {})
+        .flatMap((concept) => concept.recentQuestionIds || []);
+    return {
+        memory: student.twin || null,
+        recentQuestionIds: [
+            ...new Set([...practised, ...twinService.recentTwinQuestionIds(student.twin)])
+        ]
+    };
+}
+
+// Save one successful teaching. Creates the student record if this browser
+// has never practised, bound to its token like every other write.
+async function recordTwinTeaching(studentId, resetToken, { misconceptionType, questionId }) {
+    if (!studentId) {
+        throw requestError("studentId is required.");
+    }
+    if (!resetToken) {
+        throw requestError("X-Student-Token header is required.", 403);
+    }
+
+    const student = await studentStore.get(studentId) || {
+        studentId,
+        concepts: {},
+        resetToken: null,
+        schemaVersion: 1
+    };
+    if (student.resetToken && student.resetToken !== resetToken) {
+        throw requestError("Invalid student session token.", 403);
+    }
+    student.resetToken = student.resetToken || resetToken;
+
+    const result = twinService.applyTwinTeaching(student.twin, { misconceptionType, questionId });
+    if (result.counted) {
+        student.twin = result.memory;
+        await studentStore.save(student);
+    }
+    return result;
+}
+
+
+// ============================================================
 // EXPORTS
 // ============================================================
 
@@ -1792,5 +1844,10 @@ module.exports = {
     getAllQuestions,
 
     resetStudent: (studentId, resetToken) =>
-        withStudentLock(studentId, () => resetStudent(studentId, resetToken))
+        withStudentLock(studentId, () => resetStudent(studentId, resetToken)),
+
+    getTwinContext,
+
+    recordTwinTeaching: (studentId, resetToken, lesson) =>
+        withStudentLock(studentId, () => recordTwinTeaching(studentId, resetToken, lesson))
 };

@@ -367,10 +367,115 @@ function findTwinLesson({ misconceptionType, concept = null, excludeQuestionIds 
     return null;
 }
 
+// ------------------------------------------------------------
+// Twin memory: what the student has taught their twin
+// ------------------------------------------------------------
+//
+// Stored on the student record as `twin`:
+//   taught:        { [misconception]: successful teachings }
+//   lastTaughtAt:  { [misconception]: ISO time }
+//   recentLessons: ["misconception:questionId", ...]  (newest last)
+// Teaching the same misconception LEARN_THRESHOLD times means the twin
+// has learned it and moves on to the student's next mistake.
+
+const LEARN_THRESHOLD = 2;
+const MAX_RECENT_TWIN_LESSONS = 20;
+
+function emptyTwinMemory() {
+    return { taught: {}, lastTaughtAt: {}, recentLessons: [] };
+}
+
+function normaliseTwinMemory(memory) {
+    return {
+        taught: { ...(memory?.taught || {}) },
+        lastTaughtAt: { ...(memory?.lastTaughtAt || {}) },
+        recentLessons: Array.isArray(memory?.recentLessons) ? [...memory.recentLessons] : []
+    };
+}
+
+function hasLearned(memory, type) {
+    return (memory.taught[type] || 0) >= LEARN_THRESHOLD;
+}
+
+// Which mistake the twin should make next. `mistakes` is the student's
+// commonMistakes (most frequent first). Returns null if none fit the twin.
+function chooseTwinMisconception(mistakes, memory) {
+    const twinMemory = normaliseTwinMemory(memory);
+    const candidates = (mistakes || [])
+        .filter((mistake) => TWIN_MISCONCEPTIONS.includes(mistake.type));
+    if (candidates.length === 0) return null;
+
+    const stillLearning = candidates.find((mistake) => !hasLearned(twinMemory, mistake.type));
+    if (stillLearning) {
+        return { type: stillLearning.type, concept: stillLearning.concept || null, reviewing: false };
+    }
+
+    // Every mistake learned: review the one taught longest ago.
+    const oldest = [...candidates].sort((a, b) =>
+        String(twinMemory.lastTaughtAt[a.type] || "").localeCompare(String(twinMemory.lastTaughtAt[b.type] || ""))
+    )[0];
+    return { type: oldest.type, concept: oldest.concept || null, reviewing: true };
+}
+
+// What the screen shows: how far the twin has come with this student.
+function summariseTwinProgress(mistakes, memory, currentType) {
+    const twinMemory = normaliseTwinMemory(memory);
+    const types = [...new Set(
+        (mistakes || [])
+            .map((mistake) => mistake.type)
+            .filter((type) => TWIN_MISCONCEPTIONS.includes(type))
+            .concat(currentType ? [currentType] : [])
+    )];
+    return {
+        learnedCount: types.filter((type) => hasLearned(twinMemory, type)).length,
+        totalCount: types.length,
+        current: currentType
+            ? {
+                type: currentType,
+                taught: Math.min(twinMemory.taught[currentType] || 0, LEARN_THRESHOLD),
+                needed: LEARN_THRESHOLD,
+                learned: hasLearned(twinMemory, currentType)
+            }
+            : null
+    };
+}
+
+// Record one successful teaching. The same lesson counts only once, so
+// repeating a request cannot inflate the twin's progress.
+function applyTwinTeaching(memory, { misconceptionType, questionId, now = new Date() }) {
+    const twinMemory = normaliseTwinMemory(memory);
+    const key = `${misconceptionType}:${questionId}`;
+
+    if (twinMemory.recentLessons.includes(key)) {
+        return { memory: twinMemory, counted: false, justLearned: false };
+    }
+
+    const before = hasLearned(twinMemory, misconceptionType);
+    twinMemory.taught[misconceptionType] = (twinMemory.taught[misconceptionType] || 0) + 1;
+    twinMemory.lastTaughtAt[misconceptionType] = now.toISOString();
+    twinMemory.recentLessons = [...twinMemory.recentLessons, key].slice(-MAX_RECENT_TWIN_LESSONS);
+
+    return {
+        memory: twinMemory,
+        counted: true,
+        justLearned: !before && hasLearned(twinMemory, misconceptionType)
+    };
+}
+
+function recentTwinQuestionIds(memory) {
+    return normaliseTwinMemory(memory).recentLessons.map((key) => key.split(":").slice(1).join(":"));
+}
+
 module.exports = {
     TWIN_MISCONCEPTIONS,
+    LEARN_THRESHOLD,
     buildTwinSolution,
     findTwinLesson,
+    emptyTwinMemory,
+    chooseTwinMisconception,
+    summariseTwinProgress,
+    applyTwinTeaching,
+    recentTwinQuestionIds,
     // exported for tests
     parseQuestion,
     formatLinear,

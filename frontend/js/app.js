@@ -979,6 +979,8 @@ async function practiceMisconception(concept, misconceptionType) {
 
 const twin = {
   lesson: null,
+  progress: null,
+  reviewing: false,
   selectedIndex: null,
   solved: false,
   seenQuestionIds: [],
@@ -1043,6 +1045,9 @@ async function loadTwinLesson() {
     twin.lesson = data.lesson;
     twin.seenQuestionIds.push(data.lesson.questionId);
     renderTwinLesson(data.lesson, data.personalised);
+    twin.progress = data.progress;
+    twin.reviewing = data.reviewing;
+    renderTwinProgress(data.progress, data.reviewing);
   } catch (error) {
     setTwinSays("Hmm, I can't find my notebook right now.");
     showTwinError(error.message || "Could not load a lesson. Please try again.");
@@ -1085,6 +1090,35 @@ function renderTwinLesson(lesson, personalised) {
     item.append(button);
     list.append(item);
   });
+}
+
+// How far the twin has come with this student (saved between visits).
+function renderTwinProgress(progress, reviewing) {
+  const box = $("twinProgress");
+  if (!progress || !progress.totalCount) {
+    box.classList.add("hidden");
+    return;
+  }
+
+  const { learnedCount, totalCount, current } = progress;
+  $("twinProgressText").textContent =
+    totalCount === 1
+      ? (learnedCount === 1
+        ? "Your twin has learned your mistake"
+        : "Your twin is learning your mistake")
+      : learnedCount === totalCount
+        ? `Your twin has learned all ${totalCount} of your mistakes`
+        : `Your twin has learned ${learnedCount} of ${totalCount} of your mistakes`;
+
+  $("twinProgressHabit").textContent = reviewing
+    ? "Review lesson"
+    : current
+      ? `This habit: ${current.taught} of ${current.needed} lessons`
+      : "";
+
+  $("twinProgressFill").style.width =
+    `${Math.round((learnedCount / totalCount) * 100)}%`;
+  box.classList.remove("hidden");
 }
 
 function twinLineButton(index) {
@@ -1174,6 +1208,7 @@ async function teachTwin(event) {
     const result = await api("/api/twin/check", {
       method: "POST",
       body: JSON.stringify({
+        studentId: state.studentId,
         questionId: twin.lesson.questionId,
         misconceptionType: twin.lesson.misconceptionType,
         chosenIndex: twin.selectedIndex,
@@ -1208,10 +1243,38 @@ async function teachTwin(event) {
     }
 
     $("twinFixForm").classList.add("hidden");
+
+    const memory = result.memory;
+    let progressNote = "";
+    if (memory?.justLearned) {
+      progressNote = "Your twin has learned this mistake for good. Next time it will need help with something new.";
+    } else if (memory?.remembered && memory.counted) {
+      const left = memory.needed - memory.taught;
+      progressNote = `Your twin will remember this. ${left} more lesson${left === 1 ? "" : "s"} and it will have learned this mistake.`;
+    } else if (memory && memory.remembered === false) {
+      progressNote = "Your twin couldn't save this lesson right now, but you still taught it well.";
+    }
+
+    $("twinResult").classList.toggle("twin-result-learned", Boolean(memory?.justLearned));
+    $("twinResult").querySelector("strong").textContent = memory?.justLearned
+      ? "Your twin learned it!"
+      : "You taught your twin!";
     $("twinResultText").textContent =
-      `The right answer is ${result.correctAnswer}. ` +
-      `You've taught your twin ${twin.taughtCount} time${twin.taughtCount === 1 ? "" : "s"} this session.`;
+      `The right answer is ${result.correctAnswer}. ${progressNote}`.trim();
     $("twinResult").classList.remove("hidden");
+
+    // Keep the headline, bar and habit line consistent with what was saved.
+    if (memory?.remembered && memory.counted && twin.progress?.current) {
+      twin.progress.current.taught = memory.taught;
+      if (memory.justLearned && !twin.progress.current.learned) {
+        twin.progress.current.learned = true;
+        twin.progress.learnedCount += 1;
+      }
+      renderTwinProgress(twin.progress, false);
+      if (memory.justLearned) {
+        $("twinProgressHabit").textContent = "Learned!";
+      }
+    }
     $("twinNextButton").classList.remove("hidden");
     $("twinNextButton").focus();
   } catch (error) {
