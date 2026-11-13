@@ -15,3 +15,56 @@
 .live-invalid .live-note{color:#9b3d3d}
 .live-final .live-icon{background:#ededff;color:var(--primary)}
 .live-unreadable .live-icon{background:#fff7e8;color:var(--warning)}
+/* Teach your Twin */
+.twin-entry-button{color:var(--primary);border-color:#d9d9fb;background:#f6f6ff}
+.twin-invite{display:flex;align-items:center;gap:14px;margin-top:28px;padding:16px 18px;border:1px solid #e3e3fa;border-radius:16px;background:#f8f8ff}
+.twin-invite-text{flex:1;min-width:0}
+.twin-invite-text strong{display:block;font-size:14px}
+.twin-invite-text span{display:block;margin-top:3px;color:var(--muted);font-size:12px;line-height:1.5}
+.twin-invite .ghost-button{color:var(--primary);font-weight:700;white-space:nowrap}
+.twin-avatar{flex:0 0 40px;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--primary);color:#fff;font-weight:850}
+.twin-panel{max-width:880px;margin:0 auto}
+.twin-card{padding:28px;background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow)}
+.twin-header{display:flex;align-items:center;gap:12px}
+.twin-identity{flex:1;min-width:0}
+.twin-identity strong{display:block;font-size:14px}
+.twin-identity span{display:block;margin-top:2px;color:var(--muted);font-size:12px}
+.twin-badge{border-radius:999px;padding:6px 10px;background:#ededff;color:var(--primary);font-size:10px;font-weight:800;letter-spacing:.04em}
+.twin-bubble{position:relative;margin:16px 0 0;padding:13px 16px;border-radius:14px;background:#f3f3ff;color:#2c2f6b;font-size:14px;line-height:1.5}
+.twin-bubble::before{content:"";position:absolute;top:-7px;left:18px;width:14px;height:14px;background:#f3f3ff;transform:rotate(45deg)}
+.twin-question{margin:22px 0 4px;font-size:24px;letter-spacing:-.02em}
+.twin-instruction{margin:0;color:var(--muted);font-size:12px}
+.twin-lines{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}
+.twin-line{width:100%;display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:11px 14px;border:1px solid var(--border);border-radius:12px;background:#fff;text-align:left;transition:border-color .15s ease,background .15s ease}
+.twin-line:not(:disabled):hover{border-color:#b9baf0;background:#fafaff}
+.twin-line:focus-visible{outline:none;box-shadow:0 0 0 4px rgba(91,92,226,.15);border-color:var(--primary)}
+.twin-line-number{flex:0 0 24px;height:24px;display:grid;place-items:center;border-radius:7px;background:#eef0f4;color:var(--muted);font-size:11px;font-weight:800}
+.twin-line-text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;color:var(--text);overflow-wrap:anywhere}
+.twin-line-given{background:var(--surface-soft);cursor:default}
+.twin-line-given .twin-line-text{color:var(--muted)}
+.twin-line-selected{border-color:var(--primary);background:#fafaff}
+.twin-line-fine{border-style:dashed}
+.twin-line-fine .twin-line-number{background:#eaf8f1;color:var(--success)}
+.twin-line-found{border-color:#f0caca;background:#fff7f7}
+.twin-line-found .twin-line-number{background:#fff1f1;color:var(--danger)}
+.twin-line-found .twin-line-text{text-decoration:line-through;text-decoration-color:var(--danger)}
+.twin-line-fixed{border-color:#bfe6d3;background:#f2fbf6}
+.twin-line-fixed .twin-line-number{background:#eaf8f1;color:var(--success)}
+.twin-line-fixed .twin-line-text{text-decoration:line-through;color:var(--muted)}
+.twin-line-correction{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;font-weight:700;color:var(--success)}
+.twin-fix{margin-top:16px;padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--surface-soft)}
+.twin-fix label{display:block;font-size:12px;font-weight:750;margin-bottom:8px}
+.twin-fix-row{display:flex;gap:10px}
+.twin-fix-row input{flex:1;min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px}
+.twin-fix-row .primary-button{white-space:nowrap}
+.twin-result{display:flex;flex-direction:column;gap:4px;margin-top:16px;padding:15px 16px;border-radius:14px;background:#eaf8f1;border:1px solid #bfe6d3}
+.twin-result strong{color:#13724a}
+.twin-result span{color:#2f5e49;font-size:13px;line-height:1.5}
+.twin-actions{margin-top:16px}
+.twin-shake{animation:twin-shake .35s ease}
+@keyframes twin-shake{20%,60%{transform:translateX(-5px)}40%,80%{transform:translateX(5px)}}
+@media(prefers-reduced-motion:reduce){.twin-shake{animation:none}.twin-line{transition:none}}
+@media(max-width:850px){.twin-card{padding:20px 16px}.twin-question{font-size:21px}.twin-invite{flex-wrap:wrap}.twin-invite .ghost-button{width:100%}.twin-fix-row{flex-direction:column}.twin-badge{display:none}}
+.twin-line-note{flex-basis:100%;padding-left:36px;font-size:12px;font-weight:650}
+.twin-line-note[data-kind="fine"]{color:var(--success)}
+.twin-line-note[data-kind="found"]{color:var(--danger)}

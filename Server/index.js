@@ -27,6 +27,7 @@ const questionService = require("./Services/questionService");
 const mlService = require("./Services/mlService");
 const studySessionService = require("./Services/studySessionService");
 const misconceptionService = require("./Services/misconceptionService");
+const twinService = require("./Services/twinService");
 const studentStore = require("./Services/studentStore");
 const attemptLogStore = require("./Services/attemptLogStore");
 const { createAnswerRateLimiter } = require("./middleware/rateLimit");
@@ -395,6 +396,187 @@ app.post(
                 error: "Unable to check these steps."
             });
         }
+    }
+);
+
+
+// ============================================================
+// TEACH YOUR TWIN
+// ============================================================
+//
+// POST /api/twin/lesson  { studentId?, misconceptionType?, concept?, excludeQuestionIds? }
+//   The twin's worked solution with one mistake. Without a misconceptionType
+//   it uses the student's most frequent mistake (needs their X-Student-Token).
+//   The mistake's position is never sent, so the browser cannot reveal it.
+//
+// POST /api/twin/check   { questionId, misconceptionType, chosenIndex, correctedLine }
+//   Grades the student's teaching: did they find the wrong line, and does
+//   their corrected line follow validly from the line before it? The lesson
+//   is rebuilt on the server (it is deterministic), so nothing is stored.
+//
+// ============================================================
+
+const DEFAULT_TWIN_MISCONCEPTION = "failed_to_distribute";
+const MAX_TWIN_LINE_LENGTH = 200;
+
+app.post(
+    "/api/twin/lesson",
+    stepCheckRateLimiter,
+    async (req, res) => {
+        try {
+            const {
+                studentId,
+                misconceptionType,
+                concept,
+                excludeQuestionIds
+            } = req.body || {};
+
+            let type = misconceptionType;
+            let lessonConcept = typeof concept === "string" ? concept : null;
+            let personalised = false;
+
+            // Default: the student's most frequent mistake the twin can make.
+            if (!type && typeof studentId === "string" && studentId) {
+                const allowed = await verifyStudentToken(req, res, studentId);
+                if (!allowed) {
+                    return;
+                }
+                const profile = await studySessionService.getStudentProfile(studentId);
+                const top = (profile?.commonMistakes || [])
+                    .find((mistake) => twinService.TWIN_MISCONCEPTIONS.includes(mistake.type));
+                if (top) {
+                    type = top.type;
+                    lessonConcept = lessonConcept || top.concept;
+                    personalised = true;
+                }
+            }
+
+            if (!twinService.TWIN_MISCONCEPTIONS.includes(type)) {
+                type = DEFAULT_TWIN_MISCONCEPTION;
+            }
+
+            const lesson = twinService.findTwinLesson({
+                misconceptionType: type,
+                concept: lessonConcept,
+                excludeQuestionIds: Array.isArray(excludeQuestionIds)
+                    ? excludeQuestionIds.filter((id) => typeof id === "string").slice(0, 50)
+                    : []
+            });
+
+            if (!lesson) {
+                return res.status(404).json({
+                    success: false,
+                    error: "No twin lesson fits this mistake yet."
+                });
+            }
+
+            // Never send the answer key to the browser.
+            const { wrongIndex, twinAnswer, correctAnswer, ...publicLesson } = lesson;
+
+            res.json({
+                success: true,
+                personalised,
+                lesson: { ...publicLesson, twinAnswer }
+            });
+
+        } catch (error) {
+            console.error("Twin lesson error:", error);
+            const statusCode = serviceStatus(error);
+            res.status(statusCode).json({
+                success: false,
+                error: statusCode === 503
+                    ? "Your progress is unavailable right now, so the twin can't be personalised."
+                    : "Unable to create a twin lesson."
+            });
+        }
+    }
+);
+
+
+// The student's corrected line must follow validly from the line before
+// the twin's mistake, and actually move on from it.
+function gradeTwinCorrection(questionId, previousLine, correctedLine) {
+    const corrected = String(correctedLine || "").trim();
+    if (!corrected || corrected.length > MAX_TWIN_LINE_LENGTH) {
+        return false;
+    }
+
+    const normalize = (line) => String(line).replace(/\s+/g, "").toLowerCase();
+    if (normalize(corrected) === normalize(previousLine)) {
+        return false;
+    }
+
+    const check = misconceptionService.checkSteps({
+        questionId,
+        work: `${previousLine}\n${corrected}`
+    });
+    const verdict = check?.steps?.[check.steps.length - 1];
+
+    if (verdict?.status === "valid") {
+        return true;
+    }
+    // A final "x = 4" line is never judged by the live checker (so answers
+    // can't be guessed there); here the answer key is ours, so compare directly.
+    if (verdict?.status === "final") {
+        return misconceptionService.equationsEquivalent(previousLine, corrected);
+    }
+    return false;
+}
+
+const TWIN_REPLIES = {
+    wrongLine: "Hmm, I think that line is fine. Can you look again?",
+    fixed: "Oh! I see what I did wrong. Thanks for teaching me!",
+    notFixed: "That's the line I got wrong, but I'm still confused. Can you show me the right step?",
+    foundOnly: "You're right, that's where I went wrong! How should that line look?"
+};
+
+app.post(
+    "/api/twin/check",
+    stepCheckRateLimiter,
+    (req, res) => {
+        const {
+            questionId,
+            misconceptionType,
+            chosenIndex,
+            correctedLine
+        } = req.body || {};
+
+        if (typeof questionId !== "string" || typeof misconceptionType !== "string") {
+            return res.status(400).json({
+                success: false,
+                error: "questionId and misconceptionType are required."
+            });
+        }
+
+        const question = questionService.findQuestionById(questionId);
+        const lesson = twinService.buildTwinSolution(question, misconceptionType);
+        if (!lesson) {
+            return res.status(404).json({
+                success: false,
+                error: "That twin lesson was not found."
+            });
+        }
+
+        const foundMistake = Number(chosenIndex) === lesson.wrongIndex;
+        const hasCorrection = typeof correctedLine === "string" && correctedLine.trim() !== "";
+        const fixedIt = foundMistake && hasCorrection &&
+            gradeTwinCorrection(questionId, lesson.lines[lesson.wrongIndex - 1], correctedLine);
+
+        res.json({
+            success: true,
+            foundMistake,
+            fixedIt,
+            // Revealed only once the student has taught the twin successfully.
+            mistakeIndex: fixedIt ? lesson.wrongIndex : null,
+            correctAnswer: fixedIt ? lesson.correctAnswer : null,
+            twinSays: !foundMistake
+                ? TWIN_REPLIES.wrongLine
+                : fixedIt
+                    ? TWIN_REPLIES.fixed
+                    : hasCorrection
+                        ? TWIN_REPLIES.notFixed
+                        : TWIN_REPLIES.foundOnly
+        });
     }
 );
 

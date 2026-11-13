@@ -345,9 +345,7 @@ async function startSession({ misconceptionType = null } = {}) {
       accuracy: 0
     };
 
-    $("startPanel").classList.add("hidden");
-    $("dashboardPanel").classList.add("hidden");
-    $("practicePanel").classList.remove("hidden");
+    showOnly("practicePanel");
 
     renderQuestion(data.question);
   } catch (error) {
@@ -971,11 +969,265 @@ async function practiceMisconception(concept, misconceptionType) {
   await startSession({ misconceptionType });
 }
 
+// ============================================================
+// TEACH YOUR TWIN
+// ============================================================
+// The twin shows a worked solution containing the student's own most
+// frequent mistake. The student taps the wrong line, then writes the
+// correct step. The server grades both; the browser never knows which
+// line is wrong until the student has fixed it.
+
+const twin = {
+  lesson: null,
+  selectedIndex: null,
+  solved: false,
+  seenQuestionIds: [],
+  taughtCount: 0,
+  returnTo: "startPanel"
+};
+
+function showOnly(panelId) {
+  for (const id of ["startPanel", "practicePanel", "dashboardPanel", "twinPanel"]) {
+    $(id).classList.toggle("hidden", id !== panelId);
+  }
+}
+
+function visiblePanel() {
+  return ["practicePanel", "dashboardPanel", "startPanel"]
+    .find((id) => !$(id).classList.contains("hidden")) || "startPanel";
+}
+
+async function openTwin() {
+  twin.returnTo = visiblePanel();
+  showOnly("twinPanel");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  await loadTwinLesson();
+}
+
+function closeTwin() {
+  showOnly(twin.returnTo === "twinPanel" ? "startPanel" : twin.returnTo);
+}
+
+function setTwinSays(text) {
+  $("twinSays").textContent = text;
+}
+
+function showTwinError(message) {
+  $("twinError").textContent = message;
+  $("twinError").classList.toggle("hidden", !message);
+}
+
+async function loadTwinLesson() {
+  showTwinError("");
+  twin.lesson = null;
+  twin.selectedIndex = null;
+  twin.solved = false;
+
+  $("twinLines").innerHTML = "";
+  $("twinQuestion").textContent = "";
+  $("twinFixForm").classList.add("hidden");
+  $("twinResult").classList.add("hidden");
+  $("twinNextButton").classList.add("hidden");
+  $("twinInstruction").classList.remove("hidden");
+  $("twinMistakeLabel").textContent = "Getting ready…";
+  setTwinSays("Let me show you how I solved this…");
+
+  try {
+    const data = await api("/api/twin/lesson", {
+      method: "POST",
+      body: JSON.stringify({
+        studentId: state.studentId,
+        excludeQuestionIds: twin.seenQuestionIds
+      })
+    });
+    twin.lesson = data.lesson;
+    twin.seenQuestionIds.push(data.lesson.questionId);
+    renderTwinLesson(data.lesson, data.personalised);
+  } catch (error) {
+    setTwinSays("Hmm, I can't find my notebook right now.");
+    showTwinError(error.message || "Could not load a lesson. Please try again.");
+  }
+}
+
+function renderTwinLesson(lesson, personalised) {
+  $("twinMistakeLabel").textContent =
+    `Struggles with: ${TWIN_MISTAKE_NAMES[lesson.misconceptionType] || conceptName(lesson.misconceptionType)}`;
+  $("twinPersonalBadge").classList.toggle("hidden", !personalised);
+  $("twinQuestion").textContent = lesson.question;
+  setTwinSays(`I got ${lesson.twinAnswer}. Can you check my working?`);
+
+  const list = $("twinLines");
+  list.innerHTML = "";
+  lesson.lines.forEach((line, index) => {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "twin-line";
+    button.dataset.index = String(index);
+
+    const number = document.createElement("span");
+    number.className = "twin-line-number";
+    number.textContent = String(index + 1);
+
+    const text = document.createElement("code");
+    text.className = "twin-line-text";
+    text.textContent = line;
+
+    button.append(number, text);
+    if (index === 0) {
+      // The question itself; never the mistake.
+      button.disabled = true;
+      button.classList.add("twin-line-given");
+      button.setAttribute("aria-label", `Line 1, the question: ${line}`);
+    } else {
+      button.setAttribute("aria-label", `Line ${index + 1}: ${line}`);
+    }
+    item.append(button);
+    list.append(item);
+  });
+}
+
+function twinLineButton(index) {
+  return $("twinLines").querySelector(`.twin-line[data-index="${index}"]`);
+}
+
+// Feedback shown on the tapped line itself, where the student is looking
+// (the twin's speech bubble may be scrolled out of view).
+function setTwinLineNote(button, text, kind) {
+  let note = button.querySelector(".twin-line-note");
+  if (!note) {
+    note = document.createElement("span");
+    note.className = "twin-line-note";
+    button.append(note);
+  }
+  note.textContent = text;
+  note.dataset.kind = kind;
+}
+
+const TWIN_MISTAKE_NAMES = {
+  failed_to_distribute: "Forgetting to multiply every term in the brackets",
+  sign_error: "Mixing up + and − signs",
+  wrong_inverse_op: "Using the wrong inverse operation",
+  one_sided_op: "Changing only one side of the equation",
+  combining_unlike_terms: "Combining terms that aren't alike",
+  arithmetic_slip: "Small calculation slips"
+};
+
+async function chooseTwinLine(index) {
+  if (!twin.lesson || twin.solved) return;
+  showTwinError("");
+
+  for (const button of $("twinLines").querySelectorAll(".twin-line")) {
+    button.classList.remove("twin-line-selected");
+  }
+  const button = twinLineButton(index);
+  button.classList.add("twin-line-selected");
+
+  try {
+    const result = await api("/api/twin/check", {
+      method: "POST",
+      body: JSON.stringify({
+        questionId: twin.lesson.questionId,
+        misconceptionType: twin.lesson.misconceptionType,
+        chosenIndex: index
+      })
+    });
+    setTwinSays(result.twinSays);
+
+    if (!result.foundMistake) {
+      button.classList.remove("twin-line-selected");
+      button.classList.add("twin-line-fine");
+      setTwinLineNote(button, "✓ This line is fine. Look again.", "fine");
+      $("twinFixForm").classList.add("hidden");
+      twin.selectedIndex = null;
+      return;
+    }
+
+    twin.selectedIndex = index;
+    button.classList.add("twin-line-found");
+    setTwinLineNote(button, "✗ This is where your twin went wrong.", "found");
+    $("twinInstruction").classList.add("hidden");
+    $("twinFixLabel").textContent = `How should line ${index + 1} look?`;
+    $("twinFixInput").value = twin.lesson.lines[index];
+    $("twinFixForm").classList.remove("hidden");
+    $("twinFixInput").focus();
+    $("twinFixInput").select();
+  } catch (error) {
+    showTwinError(error.message || "Could not check that line.");
+  }
+}
+
+async function teachTwin(event) {
+  event.preventDefault();
+  if (!twin.lesson || twin.solved || twin.selectedIndex === null) return;
+
+  const correctedLine = $("twinFixInput").value.trim();
+  if (!correctedLine) {
+    $("twinFixInput").focus();
+    return;
+  }
+
+  $("twinTeachButton").disabled = true;
+  showTwinError("");
+
+  try {
+    const result = await api("/api/twin/check", {
+      method: "POST",
+      body: JSON.stringify({
+        questionId: twin.lesson.questionId,
+        misconceptionType: twin.lesson.misconceptionType,
+        chosenIndex: twin.selectedIndex,
+        correctedLine
+      })
+    });
+    setTwinSays(result.twinSays);
+
+    if (!result.fixedIt) {
+      // Shown above the input, where the student is looking.
+      $("twinFixLabel").textContent = `Your twin says: “${result.twinSays}”`;
+      $("twinFixInput").classList.remove("twin-shake");
+      void $("twinFixInput").offsetWidth;  // restart the animation
+      $("twinFixInput").classList.add("twin-shake");
+      return;
+    }
+
+    twin.solved = true;
+    twin.taughtCount += 1;
+
+    const button = twinLineButton(twin.selectedIndex);
+    button.classList.remove("twin-line-selected", "twin-line-found");
+    button.classList.add("twin-line-fixed");
+    button.querySelector(".twin-line-note")?.remove();
+    const fixed = document.createElement("span");
+    fixed.className = "twin-line-correction";
+    fixed.textContent = `→ ${correctedLine}`;
+    button.append(fixed);
+
+    for (const line of $("twinLines").querySelectorAll(".twin-line")) {
+      line.disabled = true;
+    }
+
+    $("twinFixForm").classList.add("hidden");
+    $("twinResultText").textContent =
+      `The right answer is ${result.correctAnswer}. ` +
+      `You've taught your twin ${twin.taughtCount} time${twin.taughtCount === 1 ? "" : "s"} this session.`;
+    $("twinResult").classList.remove("hidden");
+    $("twinNextButton").classList.remove("hidden");
+    $("twinNextButton").focus();
+  } catch (error) {
+    showTwinError(error.message || "Could not check your correction.");
+  } finally {
+    $("twinTeachButton").disabled = false;
+  }
+}
+
 async function openDashboard() {
 
   $("startPanel").classList.add("hidden");
 
   $("practicePanel").classList.add("hidden");
+
+  $("twinPanel").classList.add("hidden");
 
   $("dashboardPanel").classList.remove("hidden");
 
@@ -988,15 +1240,7 @@ async function openDashboard() {
 }
 
 function backToPractice() {
-  if (state.question) {
-    $("dashboardPanel").classList.add("hidden");
-
-    $("practicePanel").classList.remove("hidden");
-  } else {
-    $("dashboardPanel").classList.add("hidden");
-
-    $("startPanel").classList.remove("hidden");
-  }
+  showOnly(state.question ? "practicePanel" : "startPanel");
 }
 
 async function resetStudent() {
@@ -1101,6 +1345,17 @@ $("backToPracticeButton").addEventListener(
   "click",
   backToPractice
 );
+
+$("twinStartButton").addEventListener("click", openTwin);
+$("twinSidebarButton").addEventListener("click", openTwin);
+$("twinBackButton").addEventListener("click", closeTwin);
+$("twinNextButton").addEventListener("click", loadTwinLesson);
+$("twinFixForm").addEventListener("submit", teachTwin);
+$("twinLines").addEventListener("click", (event) => {
+  const button = event.target.closest(".twin-line");
+  if (!button || button.disabled) return;
+  chooseTwinLine(Number(button.dataset.index));
+});
 
 $("workInput").addEventListener("input", scheduleLiveCheck);
 

@@ -78,6 +78,7 @@
         </div>
       </div>
 
+      <button id="twinSidebarButton" class="ghost-button twin-entry-button">Teach your Twin</button>
       <button id="dashboardButton" class="ghost-button">View My Progress</button>
       <button id="resetButton" class="ghost-button">Reset Student</button>
     </aside>
@@ -104,6 +105,62 @@
 
         <button id="startButton" class="primary-button">Start Practice <span>→</span></button>
         <p id="startError" class="error-text hidden"></p>
+
+        <div class="twin-invite">
+          <div class="twin-avatar" aria-hidden="true">T</div>
+          <div class="twin-invite-text">
+            <strong>Teach your Twin</strong>
+            <span>Your twin makes the mistakes you make. Find where it went wrong and teach it the right step.</span>
+          </div>
+          <button id="twinStartButton" class="ghost-button">Teach your Twin <span>→</span></button>
+        </div>
+      </section>
+
+      <section id="twinPanel" class="twin-panel hidden" aria-labelledby="twinHeading">
+        <div class="dashboard-heading">
+          <div>
+            <span class="eyebrow">TEACH YOUR TWIN</span>
+            <h2 id="twinHeading">Your twin needs your help.</h2>
+            <p>Your twin solved a problem and made one mistake. Find the wrong line, then show it the right step.</p>
+          </div>
+          <button id="twinBackButton" class="ghost-button">← Back</button>
+        </div>
+
+        <div class="twin-card">
+          <div class="twin-header">
+            <div class="twin-avatar" aria-hidden="true">T</div>
+            <div class="twin-identity">
+              <strong>Your Twin</strong>
+              <span id="twinMistakeLabel">Getting ready…</span>
+            </div>
+            <span id="twinPersonalBadge" class="twin-badge hidden">Based on your mistakes</span>
+          </div>
+
+          <p id="twinSays" class="twin-bubble" aria-live="polite">Let me show you how I solved this…</p>
+
+          <h3 id="twinQuestion" class="twin-question"></h3>
+          <p id="twinInstruction" class="twin-instruction">Tap the line where your twin went wrong.</p>
+
+          <ol id="twinLines" class="twin-lines" aria-label="Your twin's working"></ol>
+
+          <form id="twinFixForm" class="twin-fix hidden">
+            <label for="twinFixInput" id="twinFixLabel">How should this line look?</label>
+            <div class="twin-fix-row">
+              <input id="twinFixInput" type="text" autocomplete="off" spellcheck="false" maxlength="200" />
+              <button id="twinTeachButton" type="submit" class="primary-button">Teach my twin</button>
+            </div>
+          </form>
+
+          <div id="twinResult" class="twin-result hidden" role="status">
+            <strong>You taught your twin!</strong>
+            <span id="twinResultText"></span>
+          </div>
+
+          <div class="twin-actions">
+            <button id="twinNextButton" class="primary-button hidden">Next lesson <span>→</span></button>
+          </div>
+          <p id="twinError" class="error-text hidden"></p>
+        </div>
       </section>
 
       <section id="practicePanel" class="practice-panel hidden">
@@ -241,6 +298,6 @@
       <div id="globalError" class="error-banner hidden"></div>
     </main>
   </div>
-  <script src="./js/app.js?v=20261111-1"></script>
+  <script src="./js/app.js?v=20261114-1"></script>
 </body>
 </html>

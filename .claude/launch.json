@@ -14,6 +14,12 @@
       "port": 3000
     },
     {
+      "name": "server-memory",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set MEMORY_STORE=1&& node Server/index.js"],
+      "port": 3000
+    },
+    {
       "name": "server-mongo",
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "set MEMORY_STORE=0&& node Server/index.js"],
