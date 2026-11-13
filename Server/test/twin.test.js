@@ -6,17 +6,17 @@ const twinService = require("../Services/twinService");
 const misconceptionService = require("../Services/misconceptionService");
 const { questions } = require("../data/questions");
 
+// Every variant of every misconception on every question.
 const allLessons = () => questions.flatMap((question) =>
-  twinService.TWIN_MISCONCEPTIONS
-    .map((type) => twinService.buildTwinSolution(question, type))
-    .filter(Boolean)
+  twinService.TWIN_MISCONCEPTIONS.flatMap((type) => twinService.listTwinVariants(question, type))
 );
 
 test("every twin lesson has exactly one mistake, on the marked line, with the intended label", () => {
   const lessons = allLessons();
-  assert.ok(lessons.length > 40, `only ${lessons.length} lessons`);
+  assert.ok(lessons.length > 60, `only ${lessons.length} lessons`);
 
   for (const lesson of lessons) {
+    const id = `${lesson.questionId}/${lesson.misconceptionType}/${lesson.stage}`;
     const check = misconceptionService.checkSteps({
       questionId: lesson.questionId,
       work: lesson.lines.join("\n")
@@ -24,12 +24,55 @@ test("every twin lesson has exactly one mistake, on the marked line, with the in
     const invalid = check.steps
       .map((step, index) => ({ ...step, index }))
       .filter((step) => step.status === "invalid");
+    assert.ok(check.steps.every((step) => step.status !== "unreadable"), id);
 
-    assert.equal(invalid.length, 1, `${lesson.questionId}/${lesson.misconceptionType}`);
-    assert.equal(invalid[0].index, lesson.wrongIndex);
-    assert.equal(invalid[0].label, lesson.misconceptionType);
-    assert.ok(check.steps.every((step) => step.status !== "unreadable"));
+    if (lesson.stage === "evaluate") {
+      // A slip in the final value sits on a bare "x = ..." line, which the
+      // live checker never judges; every earlier step must be valid and the
+      // last line must not follow from the one before.
+      const last = lesson.lines.length - 1;
+      assert.equal(invalid.length, 0, id);
+      assert.equal(lesson.wrongIndex, last, id);
+      assert.equal(
+        misconceptionService.equationsEquivalent(lesson.lines[last - 1], lesson.lines[last]),
+        false,
+        id
+      );
+    } else {
+      assert.equal(invalid.length, 1, id);
+      assert.equal(invalid[0].index, lesson.wrongIndex, id);
+      assert.equal(invalid[0].label, lesson.misconceptionType, id);
+    }
   }
+});
+
+test("the twin makes mistakes at every step of a solution, not just the expansion", () => {
+  const stages = new Set(allLessons().map((lesson) => lesson.stage));
+  for (const stage of ["expand", "isolate", "divide", "evaluate", "combine"]) {
+    assert.ok(stages.has(stage), `no lesson with a mistake while ${stage}`);
+  }
+
+  // The same problem can host mistakes at different lines.
+  const q = questions.find((x) => x.id === "dp_004");
+  const wrongLines = new Set(
+    twinService.TWIN_MISCONCEPTIONS.flatMap((type) => twinService.listTwinVariants(q, type))
+      .map((lesson) => lesson.wrongIndex)
+  );
+  assert.ok(wrongLines.size >= 4, `only lines ${[...wrongLines]}`);
+});
+
+test("a final-value slip looks the way a student would write it", () => {
+  const lesson = twinService.listTwinVariants(questions.find((q) => q.id === "dp_004"), "arithmetic_slip")
+    .find((l) => l.stage === "evaluate");
+  assert.deepEqual(lesson.lines, [
+    "5(x + 4) = 35",
+    "5x + 20 = 35",
+    "5x = 35 - 20",
+    "5x = 15",
+    "x = 15/5",
+    "x = 4"
+  ]);
+  assert.equal(lesson.wrongIndex, 5);
 });
 
 test("the twin's answer is wrong and is what its last line says", () => {

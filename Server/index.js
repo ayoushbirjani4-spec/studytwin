@@ -428,7 +428,8 @@ app.post(
                 studentId,
                 misconceptionType,
                 concept,
-                excludeQuestionIds
+                excludeQuestionIds,
+                lessonNumber
             } = req.body || {};
 
             let type = misconceptionType;
@@ -467,15 +468,46 @@ app.post(
                 }
             }
 
+            const chosenByStudent = twinService.TWIN_MISCONCEPTIONS.includes(misconceptionType);
             if (!twinService.TWIN_MISCONCEPTIONS.includes(type)) {
                 type = DEFAULT_TWIN_MISCONCEPTION;
             }
 
-            const lesson = twinService.findTwinLesson({
-                misconceptionType: type,
-                concept: lessonConcept,
-                excludeQuestionIds: exclude
-            });
+            // Vary where the twin goes wrong. Lessons alternate between the
+            // student's habit and a "mixed" lesson with a slip in a different
+            // step (isolating, dividing, evaluating), so the student practises
+            // spotting mistakes anywhere in a solution, not just one line.
+            // Lessons so far: this session's count, or the saved count when
+            // returning (whichever is larger; adding them would double-count,
+            // since teaching a lesson advances both).
+            const lessonCount = Math.max(
+                Number.isInteger(lessonNumber) && lessonNumber >= 0 ? lessonNumber : 0,
+                memory?.recentLessons?.length || 0
+            );
+            const rotate = (list, by) => list.map((_, i) => list[(i + by) % list.length]);
+            const mixed = !chosenByStudent && lessonCount % 2 === 1;
+
+            let lesson = null;
+            if (mixed) {
+                lesson = twinService.findMixedLesson({
+                    excludeTypes: [type],
+                    stages: rotate(["isolate", "divide", "evaluate"], Math.floor(lessonCount / 2)),
+                    concept: lessonConcept,
+                    excludeQuestionIds: exclude
+                });
+            }
+            if (!lesson) {
+                // Habit lesson; if the habit can happen at several steps, rotate them.
+                for (const stage of rotate(twinService.TWIN_STAGES, Math.floor(lessonCount / 2))) {
+                    lesson = twinService.findTwinLesson({
+                        misconceptionType: type,
+                        concept: lessonConcept,
+                        excludeQuestionIds: exclude,
+                        stage
+                    });
+                    if (lesson) break;
+                }
+            }
 
             if (!lesson) {
                 return res.status(404).json({
@@ -484,13 +516,16 @@ app.post(
                 });
             }
 
-            // Never send the answer key to the browser.
-            const { wrongIndex, twinAnswer, correctAnswer, ...publicLesson } = lesson;
+            // Never send the answer key to the browser. The step is a hint too,
+            // so only the opaque variant number goes back (to grade it later).
+            const { wrongIndex, twinAnswer, correctAnswer, stage, ...publicLesson } = lesson;
+            const isMixed = lesson.misconceptionType !== type;
 
             res.json({
                 success: true,
                 personalised,
-                reviewing,
+                reviewing: reviewing && !isMixed,
+                mode: isMixed ? "mixed" : "habit",
                 progress: personalised
                     ? twinService.summariseTwinProgress(mistakes, memory, type)
                     : null,
@@ -557,6 +592,7 @@ app.post(
             studentId,
             questionId,
             misconceptionType,
+            variant = 0,
             chosenIndex,
             correctedLine
         } = req.body || {};
@@ -569,7 +605,8 @@ app.post(
         }
 
         const question = questionService.findQuestionById(questionId);
-        const lesson = twinService.buildTwinSolution(question, misconceptionType);
+        const lessonVariant = Number.isInteger(variant) && variant >= 0 && variant < 10 ? variant : 0;
+        const lesson = twinService.buildTwinSolution(question, misconceptionType, lessonVariant);
         if (!lesson) {
             return res.status(404).json({
                 success: false,
@@ -590,7 +627,7 @@ app.post(
                 const recorded = await studySessionService.recordTwinTeaching(
                     studentId,
                     req.get("X-Student-Token"),
-                    { misconceptionType, questionId }
+                    { misconceptionType, questionId, variant: lessonVariant }
                 );
                 memory = {
                     remembered: true,

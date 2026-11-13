@@ -101,22 +101,64 @@ async function withServer(t) {
   }).then((res) => res.json());
 }
 
-// The fix for the twin's mistake: the correct version of its wrong line.
+const { questions: QUESTIONS } = require("../data/questions");
+const { buildTwinSolution } = twinService;
+
+// A valid fix for any lesson: every line before the twin's mistake is
+// correct, so jumping straight to the right answer always follows from it.
 function correctFix(lesson) {
-  const full = twinService.buildTwinSolution(
-    require("../data/questions").questions.find((q) => q.id === lesson.questionId),
-    lesson.misconceptionType
-  );
-  const correct = twinService.buildTwinSolution(
-    require("../data/questions").questions.find((q) => q.id === lesson.questionId),
-    "wrong_inverse_op"
-  );
-  // For distribution lessons the correct expansion is the line at the same
-  // position in a lesson whose mistake comes later.
-  return { index: full.wrongIndex, line: correct ? correct.lines[full.wrongIndex] : null };
+  const question = QUESTIONS.find((q) => q.id === lesson.questionId);
+  const full = buildTwinSolution(question, lesson.misconceptionType, lesson.variant);
+  const line = /^simplify/i.test(question.question) ? question.answer : `x = ${question.answer}`;
+  return { index: full.wrongIndex, line };
 }
 
-test("teaching the twin twice makes it learn, and it moves on to the next mistake", async (t) => {
+async function teach(post, token, studentId, lesson) {
+  const fix = correctFix(lesson);
+  return post("/api/twin/check", {
+    studentId,
+    questionId: lesson.questionId,
+    misconceptionType: lesson.misconceptionType,
+    variant: lesson.variant,
+    chosenIndex: fix.index,
+    correctedLine: fix.line
+  }, token);
+}
+
+test("lessons alternate between the student's habit and mistakes in other steps", async (t) => {
+  setUpStudent(t, { studentId: "mixed-student", resetToken: "mixed-token", concepts: {} });
+  const post = await withServer(t);
+
+  const modes = [];
+  const types = [];
+  for (let lessonNumber = 0; lessonNumber < 6; lessonNumber++) {
+    const data = await post("/api/twin/lesson", { studentId: "mixed-student", lessonNumber }, "mixed-token");
+    modes.push(data.mode);
+    types.push(data.lesson.misconceptionType);
+    assert.equal(data.lesson.stage, undefined, "the step is never sent to the browser");
+  }
+
+  assert.deepEqual(modes, ["habit", "mixed", "habit", "mixed", "habit", "mixed"]);
+  assert.ok(types.filter((_, i) => i % 2 === 0).every((type) => type === "failed_to_distribute"));
+  assert.ok(types.filter((_, i) => i % 2 === 1).every((type) => type !== "failed_to_distribute"));
+});
+
+test("mixed lessons put the twin's mistake later in the solution", async (t) => {
+  setUpStudent(t, { studentId: "late-student", resetToken: "late-token", concepts: {} });
+  const post = await withServer(t);
+
+  const wrongLines = [];
+  for (const lessonNumber of [1, 3, 5]) {
+    const { lesson } = await post("/api/twin/lesson", { studentId: "late-student", lessonNumber }, "late-token");
+    const full = buildTwinSolution(QUESTIONS.find((q) => q.id === lesson.questionId), lesson.misconceptionType, lesson.variant);
+    wrongLines.push(full.wrongIndex);
+  }
+  // Line 1 is the expansion, where the distribution habit always is.
+  assert.ok(wrongLines.every((index) => index >= 2), `mistake lines ${wrongLines}`);
+  assert.ok(new Set(wrongLines).size >= 2, `mistake lines ${wrongLines}`);
+});
+
+test("teaching the habit twice makes the twin learn it, mixed lessons in between", async (t) => {
   const records = setUpStudent(t, {
     studentId: "memory-student",
     resetToken: "memory-token",
@@ -125,33 +167,35 @@ test("teaching the twin twice makes it learn, and it moves on to the next mistak
   const post = await withServer(t);
   const token = "memory-token";
 
-  const first = await post("/api/twin/lesson", { studentId: "memory-student" }, token);
+  const first = await post("/api/twin/lesson", { studentId: "memory-student", lessonNumber: 0 }, token);
+  assert.equal(first.mode, "habit");
   assert.equal(first.lesson.misconceptionType, "failed_to_distribute");
   assert.notEqual(first.lesson.questionId, "dp_001", "just-practised question is skipped");
   assert.deepEqual(first.progress.current, { type: "failed_to_distribute", taught: 0, needed: 2, learned: false });
 
-  for (let lessonNumber = 1; lessonNumber <= 2; lessonNumber++) {
-    const lesson = (await post("/api/twin/lesson", { studentId: "memory-student" }, token)).lesson;
-    assert.equal(lesson.misconceptionType, "failed_to_distribute");
-    const fix = correctFix(lesson);
-    const result = await post("/api/twin/check", {
-      studentId: "memory-student",
-      questionId: lesson.questionId,
-      misconceptionType: lesson.misconceptionType,
-      chosenIndex: fix.index,
-      correctedLine: fix.line
-    }, token);
+  const taught1 = await teach(post, token, "memory-student", first.lesson);
+  assert.equal(taught1.fixedIt, true);
+  assert.equal(taught1.memory.justLearned, false);
 
-    assert.equal(result.fixedIt, true, `lesson ${lessonNumber}: ${fix.line}`);
-    assert.equal(result.memory.remembered, true);
-    assert.equal(result.memory.justLearned, lessonNumber === 2);
-    if (lessonNumber === 2) assert.match(result.twinSays, /won't make that mistake again/);
-  }
+  // Next comes a mixed lesson: a different mistake, and the habit counter stays.
+  const mixed = await post("/api/twin/lesson", { studentId: "memory-student", lessonNumber: 1 }, token);
+  assert.equal(mixed.mode, "mixed");
+  assert.notEqual(mixed.lesson.misconceptionType, "failed_to_distribute");
+  const taughtMixed = await teach(post, token, "memory-student", mixed.lesson);
+  assert.equal(taughtMixed.fixedIt, true, JSON.stringify(mixed.lesson.lines));
 
-  const saved = records.get("memory-student").twin;
-  assert.equal(saved.taught.failed_to_distribute, 2);
+  const second = await post("/api/twin/lesson", { studentId: "memory-student", lessonNumber: 2 }, token);
+  assert.equal(second.mode, "habit");
+  assert.equal(second.progress.current.taught, 1);
+  const taught2 = await teach(post, token, "memory-student", second.lesson);
+  assert.equal(taught2.memory.justLearned, true);
+  assert.match(taught2.twinSays, /won't make that mistake again/);
 
-  const next = await post("/api/twin/lesson", { studentId: "memory-student" }, token);
+  assert.equal(records.get("memory-student").twin.taught.failed_to_distribute, 2);
+
+  // The habit is learned, so the next habit lesson moves on to the next mistake.
+  const next = await post("/api/twin/lesson", { studentId: "memory-student", lessonNumber: 4 }, token);
+  assert.equal(next.mode, "habit");
   assert.equal(next.lesson.misconceptionType, "sign_error");
   assert.equal(next.progress.learnedCount, 1);
   assert.equal(next.progress.totalCount, 2);

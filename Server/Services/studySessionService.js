@@ -1777,7 +1777,7 @@ async function getTwinContext(studentId) {
 
 // Save one successful teaching. Creates the student record if this browser
 // has never practised, bound to its token like every other write.
-async function recordTwinTeaching(studentId, resetToken, { misconceptionType, questionId }) {
+async function recordTwinTeaching(studentId, resetToken, { misconceptionType, questionId, variant = 0 }) {
     if (!studentId) {
         throw requestError("studentId is required.");
     }
@@ -1796,7 +1796,7 @@ async function recordTwinTeaching(studentId, resetToken, { misconceptionType, qu
     }
     student.resetToken = student.resetToken || resetToken;
 
-    const result = twinService.applyTwinTeaching(student.twin, { misconceptionType, questionId });
+    const result = twinService.applyTwinTeaching(student.twin, { misconceptionType, questionId, variant });
     if (result.counted) {
         student.twin = result.memory;
         await studentStore.save(student);

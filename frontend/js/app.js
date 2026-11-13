@@ -979,6 +979,8 @@ async function practiceMisconception(concept, misconceptionType) {
 
 const twin = {
   lesson: null,
+  mode: "habit",
+  lessonNumber: 0,
   progress: null,
   reviewing: false,
   selectedIndex: null,
@@ -1039,27 +1041,36 @@ async function loadTwinLesson() {
       method: "POST",
       body: JSON.stringify({
         studentId: state.studentId,
-        excludeQuestionIds: twin.seenQuestionIds
+        excludeQuestionIds: twin.seenQuestionIds,
+        // Lets the server alternate habit lessons with mixed-step ones.
+        lessonNumber: twin.lessonNumber
       })
     });
+    twin.lessonNumber += 1;
     twin.lesson = data.lesson;
+    twin.mode = data.mode || "habit";
     twin.seenQuestionIds.push(data.lesson.questionId);
-    renderTwinLesson(data.lesson, data.personalised);
+    renderTwinLesson(data.lesson, data.personalised, twin.mode);
     twin.progress = data.progress;
     twin.reviewing = data.reviewing;
-    renderTwinProgress(data.progress, data.reviewing);
+    renderTwinProgress(data.progress, data.reviewing, twin.mode);
   } catch (error) {
     setTwinSays("Hmm, I can't find my notebook right now.");
     showTwinError(error.message || "Could not load a lesson. Please try again.");
   }
 }
 
-function renderTwinLesson(lesson, personalised) {
-  $("twinMistakeLabel").textContent =
-    `Struggles with: ${TWIN_MISTAKE_NAMES[lesson.misconceptionType] || conceptName(lesson.misconceptionType)}`;
-  $("twinPersonalBadge").classList.toggle("hidden", !personalised);
+function renderTwinLesson(lesson, personalised, mode) {
+  const isMixed = mode === "mixed";
+  // A mixed lesson doesn't name the mistake: finding the step is the point.
+  $("twinMistakeLabel").textContent = isMixed
+    ? "Mixed lesson: the mistake could be in any step"
+    : `Struggles with: ${TWIN_MISTAKE_NAMES[lesson.misconceptionType] || conceptName(lesson.misconceptionType)}`;
+  $("twinPersonalBadge").classList.toggle("hidden", !personalised || isMixed);
   $("twinQuestion").textContent = lesson.question;
-  setTwinSays(`I got ${lesson.twinAnswer}. Can you check my working?`);
+  setTwinSays(isMixed
+    ? `I tried a new problem and got ${lesson.twinAnswer}. I think I slipped somewhere. Can you find it?`
+    : `I got ${lesson.twinAnswer}. Can you check my working?`);
 
   const list = $("twinLines");
   list.innerHTML = "";
@@ -1093,7 +1104,7 @@ function renderTwinLesson(lesson, personalised) {
 }
 
 // How far the twin has come with this student (saved between visits).
-function renderTwinProgress(progress, reviewing) {
+function renderTwinProgress(progress, reviewing, mode = "habit") {
   const box = $("twinProgress");
   if (!progress || !progress.totalCount) {
     box.classList.add("hidden");
@@ -1110,7 +1121,9 @@ function renderTwinProgress(progress, reviewing) {
         ? `Your twin has learned all ${totalCount} of your mistakes`
         : `Your twin has learned ${learnedCount} of ${totalCount} of your mistakes`;
 
-  $("twinProgressHabit").textContent = reviewing
+  $("twinProgressHabit").textContent = mode === "mixed"
+    ? "Mixed lesson"
+    : reviewing
     ? "Review lesson"
     : current
       ? `This habit: ${current.taught} of ${current.needed} lessons`
@@ -1163,6 +1176,7 @@ async function chooseTwinLine(index) {
       body: JSON.stringify({
         questionId: twin.lesson.questionId,
         misconceptionType: twin.lesson.misconceptionType,
+        variant: twin.lesson.variant,
         chosenIndex: index
       })
     });
@@ -1211,6 +1225,7 @@ async function teachTwin(event) {
         studentId: state.studentId,
         questionId: twin.lesson.questionId,
         misconceptionType: twin.lesson.misconceptionType,
+        variant: twin.lesson.variant,
         chosenIndex: twin.selectedIndex,
         correctedLine
       })
@@ -1248,6 +1263,8 @@ async function teachTwin(event) {
     let progressNote = "";
     if (memory?.justLearned) {
       progressNote = "Your twin has learned this mistake for good. Next time it will need help with something new.";
+    } else if (twin.mode === "mixed") {
+      progressNote = "Great spotting! That slip was in a different step from your usual mistake.";
     } else if (memory?.remembered && memory.counted) {
       const left = memory.needed - memory.taught;
       progressNote = `Your twin will remember this. ${left} more lesson${left === 1 ? "" : "s"} and it will have learned this mistake.`;
@@ -1264,7 +1281,8 @@ async function teachTwin(event) {
     $("twinResult").classList.remove("hidden");
 
     // Keep the headline, bar and habit line consistent with what was saved.
-    if (memory?.remembered && memory.counted && twin.progress?.current) {
+    if (memory?.remembered && memory.counted && twin.progress?.current &&
+        twin.lesson.misconceptionType === twin.progress.current.type) {
       twin.progress.current.taught = memory.taught;
       if (memory.justLearned && !twin.progress.current.learned) {
         twin.progress.current.learned = true;

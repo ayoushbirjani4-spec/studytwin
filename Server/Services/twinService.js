@@ -173,40 +173,42 @@ function finishLinear(a, b, c) {
 }
 
 // ------------------------------------------------------------
-// Building one twin solution
+// Building twin solutions
 // ------------------------------------------------------------
+//
+// A misconception can happen at more than one step of a solution. Each
+// builder returns every variant it can make, tagged with the step where
+// the mistake happens:
+//   expand    multiplying out the brackets
+//   isolate   moving the constant to the other side
+//   divide    dividing by the coefficient of x
+//   evaluate  working out the final value
+//   combine   collecting like terms (simplify questions)
+// Each variant is { lines, wrongIndex, stage }.
 
-// Each builder returns { lines, wrongIndex, twinAnswer } with the mistake
-// injected, or null when that misconception does not fit this question.
+const TWIN_STAGES = ["expand", "isolate", "divide", "evaluate", "combine"];
 
-function buildBracket(q, type) {
-    const lines = [q.start];
+function bracketVariants(q, type) {
     const expandedA = q.k * q.p;
     const expandedB = q.k * q.b;
-    let a = expandedA;
-    let b = expandedB;
-
-    if (type === "failed_to_distribute") {
-        b = q.b;                               // only the x-term multiplied
-    } else if (type === "sign_error") {
-        b = -expandedB;                        // constant's sign flipped
-    }
 
     if (type === "failed_to_distribute" || type === "sign_error") {
-        lines.push(equation(formatLinear(a, b), formatNumber(q.c)));
-        const wrongIndex = lines.length - 1;
-        lines.push(...finishLinear(a, b, q.c));
-        return { lines, wrongIndex };
+        // Only the x-term multiplied, or the constant's sign flipped.
+        const b = type === "failed_to_distribute" ? q.b : -expandedB;
+        const lines = [q.start, equation(formatLinear(expandedA, b), formatNumber(q.c))];
+        return [{ lines: [...lines, ...finishLinear(expandedA, b, q.c)], wrongIndex: 1, stage: "expand" }];
     }
 
-    // Correct expansion, then a mistake while isolating x.
-    lines.push(equation(formatLinear(expandedA, expandedB), formatNumber(q.c)));
-    return injectIntoLinear(lines, expandedA, expandedB, q.c, type);
+    // Correct expansion, then a mistake in a later step.
+    const prefix = [q.start, equation(formatLinear(expandedA, expandedB), formatNumber(q.c))];
+    return linearVariants(prefix, expandedA, expandedB, q.c, type);
 }
 
-// From "a·x + b = c" (already written as the last line), make the
-// mistake while undoing +b or while dividing by a.
-function injectIntoLinear(lines, a, b, c, type) {
+// From "a·x + b = c" (already the last line of `prefix`), every place the
+// misconception can happen while finishing the solution.
+function linearVariants(prefix, a, b, c, type) {
+    const variants = [];
+
     if (b !== 0) {
         const op = b > 0 ? "-" : "+";
         const undo = Math.abs(b);
@@ -223,16 +225,15 @@ function injectIntoLinear(lines, a, b, c, type) {
             wrongLine = equation(formatTerm(a), formatNumber(c));
             newRhs = c;
         } else if (type === "arithmetic_slip" && a !== 1) {
-            // Right operation, wrong result, written in one jump as students
-            // do ("2x + 6 = 14" -> "2x = 9"). Writing "2x = 14 - 6" first would
-            // make the slip a right-side-only change, which reads as one-sided.
+            // Right operation, wrong result, in one jump ("2x + 6 = 14" -> "2x = 9").
+            // Writing "2x = 14 - 6" first would read as a one-sided change.
             // Needs a !== 1: a bare "x = 9" line is never judged live.
             wrongLine = equation(formatTerm(a), formatNumber(c - b + 1));
             newRhs = c - b + 1;
         }
 
         if (wrongLine) {
-            lines.push(wrongLine);
+            const lines = [...prefix, wrongLine];
             const wrongIndex = lines.length - 1;
             if (type === "wrong_inverse_op") {
                 lines.push(equation(formatTerm(a), formatNumber(newRhs)));
@@ -240,68 +241,88 @@ function injectIntoLinear(lines, a, b, c, type) {
             if (a !== 1) {
                 pushDivision(lines, newRhs, a);
             }
-            return { lines, wrongIndex };
+            variants.push({ lines, wrongIndex, stage: "isolate" });
         }
-        return null;
     }
 
-    // a·x = c: the mistake happens while dividing.
-    if (a !== 1 && type === "wrong_inverse_op") {
-        lines.push(equation("x", `${formatNumber(c)} - ${formatNumber(a)}`));
-        const wrongIndex = lines.length - 1;
-        lines.push(equation("x", formatNumber(c - a)));
-        return { lines, wrongIndex };
+    // Later steps: isolate x correctly, then slip while dividing or evaluating.
+    if (a !== 1) {
+        const isolated = [...prefix];
+        let rhs = c;
+        if (b !== 0) {
+            const op = b > 0 ? "-" : "+";
+            isolated.push(equation(formatTerm(a), `${formatNumber(c)} ${op} ${formatNumber(Math.abs(b))}`));
+            rhs = c - b;
+            isolated.push(equation(formatTerm(a), formatNumber(rhs)));
+        }
+
+        if (type === "wrong_inverse_op") {
+            // Subtracts the coefficient instead of dividing by it.
+            const lines = [...isolated, equation("x", `${formatNumber(rhs)} - ${formatNumber(a)}`)];
+            const wrongIndex = lines.length - 1;
+            lines.push(equation("x", formatNumber(rhs - a)));
+            variants.push({ lines, wrongIndex, stage: "divide" });
+        }
+
+        if (type === "arithmetic_slip") {
+            // Divides correctly, then gets the final value wrong.
+            const lines = [...isolated, equation("x", `${formatNumber(rhs)}/${formatNumber(a)}`)];
+            lines.push(equation("x", formatNumber(rhs / a + 1, rhs + a, a)));
+            variants.push({ lines, wrongIndex: lines.length - 1, stage: "evaluate" });
+        }
     }
-    return null;
+
+    return variants;
 }
 
-function buildDivide(q, type) {
-    const lines = [q.start];
+function divideVariants(q, type) {
     if (type === "wrong_inverse_op") {
-        lines.push(equation("x", `${formatNumber(q.c)}/${formatNumber(q.d)}`));
-        const wrongIndex = lines.length - 1;
+        // Divides instead of multiplying.
+        const lines = [q.start, equation("x", `${formatNumber(q.c)}/${formatNumber(q.d)}`)];
         lines.push(equation("x", formatNumber(q.c / q.d, q.c, q.d)));
-        return { lines, wrongIndex };
+        return [{ lines, wrongIndex: 1, stage: "divide" }];
     }
-    // No arithmetic slip here: its wrong line would be a bare "x = 21",
-    // which is never judged live.
-    return null;
+    if (type === "arithmetic_slip") {
+        // Multiplies correctly, then gets the product wrong.
+        const lines = [
+            q.start,
+            equation("x", `${formatNumber(q.c)} * ${formatNumber(q.d)}`),
+            equation("x", formatNumber(q.c * q.d + 1))
+        ];
+        return [{ lines, wrongIndex: 2, stage: "evaluate" }];
+    }
+    return [];
 }
 
-function buildLinear(q, type) {
-    return injectIntoLinear([q.start], q.a, q.b, q.c, type);
-}
-
-function buildSimplify(q, type) {
+function simplifyVariants(q, type) {
     const xs = q.terms.filter((t) => t.isX);
     const constants = q.terms.filter((t) => !t.isX);
     const a = xs.reduce((sum, t) => sum + t.coefficient, 0);
     const b = constants.reduce((sum, t) => sum + t.coefficient, 0);
-    const lines = [q.start];
 
     if (type === "combining_unlike_terms" && constants.length > 0) {
-        lines.push(formatTerm(a + b));               // numbers merged into the x-term
-        return { lines, wrongIndex: 1 };
+        // Numbers merged into the x-term.
+        return [{ lines: [q.start, formatTerm(a + b)], wrongIndex: 1, stage: "combine" }];
     }
     if (type === "sign_error" && q.terms.slice(1).some((t) => t.coefficient < 0)) {
+        // Every minus treated as plus.
         const absA = xs.reduce((sum, t) => sum + Math.abs(t.coefficient), 0);
         const absB = constants.reduce((sum, t) => sum + Math.abs(t.coefficient), 0);
-        lines.push(formatLinear(absA, absB));         // every minus treated as plus
-        return { lines, wrongIndex: 1 };
+        return [{ lines: [q.start, formatLinear(absA, absB)], wrongIndex: 1, stage: "combine" }];
     }
     if (type === "arithmetic_slip") {
         // Like terms grouped correctly, one total off by one.
-        lines.push(constants.length > 0 ? formatLinear(a, b + 1) : formatTerm(a + 1));
-        return { lines, wrongIndex: 1 };
+        const line = constants.length > 0 ? formatLinear(a, b + 1) : formatTerm(a + 1);
+        return [{ lines: [q.start, line], wrongIndex: 1, stage: "combine" }];
     }
-    return null;
+    return [];
 }
 
-const BUILDERS = {
-    bracket: buildBracket,
-    divide: buildDivide,
-    linear: buildLinear,
-    simplify: buildSimplify
+const VARIANT_BUILDERS = {
+    bracket: bracketVariants,
+    divide: divideVariants,
+    linear: (q, type) => linearVariants([q.start], q.a, q.b, q.c, type),
+    simplify: simplifyVariants
 };
 
 // ------------------------------------------------------------
@@ -313,54 +334,110 @@ function verify(question, built, type) {
         questionId: question.id,
         work: built.lines.join("\n")
     });
-    if (!result) return false;
+    if (!result || result.steps.some((step) => step.status === "unreadable")) {
+        return false;
+    }
 
     const invalid = result.steps
         .map((step, index) => ({ ...step, index }))
         .filter((step) => step.status === "invalid");
 
+    if (built.stage === "evaluate") {
+        // The live checker never judges a bare "x = 6" (so answers can't be
+        // guessed), so check the final slip directly: every earlier step is
+        // valid, and the last line does not follow from the one before.
+        const last = built.lines.length - 1;
+        return invalid.length === 0 &&
+            built.wrongIndex === last &&
+            result.steps[last].status === "final" &&
+            !misconceptionService.equationsEquivalent(built.lines[last - 1], built.lines[last]);
+    }
+
     return invalid.length === 1 &&
         invalid[0].index === built.wrongIndex &&
-        invalid[0].label === type &&
-        result.steps.every((step) => step.status !== "unreadable");
+        invalid[0].label === type;
 }
 
-// One twin solution for a question and misconception, or null.
-function buildTwinSolution(question, type) {
-    if (!question || !TWIN_MISCONCEPTIONS.includes(type)) return null;
+// Every verified variant of this misconception for this question, in a
+// fixed order; `variant` is its position in that list.
+function listTwinVariants(question, type) {
+    if (!question || !TWIN_MISCONCEPTIONS.includes(type)) return [];
 
     const parsed = parseQuestion(question);
-    if (!parsed) return null;
+    if (!parsed) return [];
 
-    const built = BUILDERS[parsed.kind](parsed, type);
-    if (!built || !verify(question, built, type)) return null;
+    return VARIANT_BUILDERS[parsed.kind](parsed, type)
+        .filter((built) => verify(question, built, type))
+        .map((built, variant) => {
+            const lastLine = built.lines[built.lines.length - 1];
+            return {
+                questionId: question.id,
+                question: question.question,
+                concept: question.concept,
+                misconceptionType: type,
+                variant,
+                stage: built.stage,
+                lines: built.lines,
+                wrongIndex: built.wrongIndex,
+                twinAnswer: lastLine.includes("=") ? lastLine.split("=").pop().trim() : lastLine,
+                correctAnswer: question.answer
+            };
+        });
+}
 
-    const lastLine = built.lines[built.lines.length - 1];
-    return {
-        questionId: question.id,
-        question: question.question,
-        concept: question.concept,
-        misconceptionType: type,
-        lines: built.lines,
-        wrongIndex: built.wrongIndex,
-        twinAnswer: lastLine.includes("=") ? lastLine.split("=").pop().trim() : lastLine,
-        correctAnswer: question.answer
-    };
+// One twin solution, or null. Deterministic: the same inputs always give
+// the same lesson, so the server can rebuild it to grade the student.
+function buildTwinSolution(question, type, variant = 0) {
+    return listTwinVariants(question, type)[Number(variant) || 0] || null;
+}
+
+function questionPools(concept, excludeQuestionIds) {
+    const ordered = [
+        ...QUESTION_BANK.filter((q) => q.concept === concept),
+        ...QUESTION_BANK.filter((q) => q.concept !== concept)
+    ];
+    return [ordered.filter((q) => !excludeQuestionIds.includes(q.id)), ordered];
 }
 
 // A twin lesson for this misconception, preferring the given concept and
-// avoiding recently used questions. Returns null if no question fits.
-function findTwinLesson({ misconceptionType, concept = null, excludeQuestionIds = [] }) {
-    const all = QUESTION_BANK;
-    const ordered = [
-        ...all.filter((q) => q.concept === concept),
-        ...all.filter((q) => q.concept !== concept)
-    ];
-    const fresh = ordered.filter((q) => !excludeQuestionIds.includes(q.id));
-
-    for (const pool of [fresh, ordered]) {
+// fresh questions, and if possible a different step from `avoidStage`.
+// `stage` restricts it to mistakes in one step.
+function findTwinLesson({
+    misconceptionType,
+    concept = null,
+    excludeQuestionIds = [],
+    stage = null,
+    avoidStage = null
+}) {
+    for (const pool of questionPools(concept, excludeQuestionIds)) {
+        let fallback = null;
         for (const question of pool) {
-            const lesson = buildTwinSolution(question, misconceptionType);
+            for (const lesson of listTwinVariants(question, misconceptionType)) {
+                if (stage && lesson.stage !== stage) continue;
+                if (avoidStage && lesson.stage === avoidStage) {
+                    fallback = fallback || lesson;
+                    continue;
+                }
+                return lesson;
+            }
+        }
+        if (fallback) return fallback;
+    }
+    return null;
+}
+
+// A "mixed" lesson: the twin slips at a different step from the student's
+// habit, trying the steps in the order given. Returns null if none fits.
+function findMixedLesson({
+    excludeTypes = [],
+    stages = ["isolate", "divide", "evaluate"],
+    concept = null,
+    excludeQuestionIds = []
+}) {
+    for (const stage of stages) {
+        for (const type of TWIN_MISCONCEPTIONS) {
+            if (excludeTypes.includes(type)) continue;
+            const lesson = findTwinLesson({ misconceptionType: type, concept, excludeQuestionIds, stage });
             if (lesson) return lesson;
         }
     }
@@ -442,9 +519,13 @@ function summariseTwinProgress(mistakes, memory, currentType) {
 
 // Record one successful teaching. The same lesson counts only once, so
 // repeating a request cannot inflate the twin's progress.
-function applyTwinTeaching(memory, { misconceptionType, questionId, now = new Date() }) {
+function applyTwinTeaching(memory, { misconceptionType, questionId, variant = 0, now = new Date() }) {
     const twinMemory = normaliseTwinMemory(memory);
-    const key = `${misconceptionType}:${questionId}`;
+    // The same problem can host the mistake at different steps (variants);
+    // each is a different lesson. Variant 0 keeps the original key format.
+    const key = variant
+        ? `${misconceptionType}:${questionId}:${variant}`
+        : `${misconceptionType}:${questionId}`;
 
     if (twinMemory.recentLessons.includes(key)) {
         return { memory: twinMemory, counted: false, justLearned: false };
@@ -463,14 +544,18 @@ function applyTwinTeaching(memory, { misconceptionType, questionId, now = new Da
 }
 
 function recentTwinQuestionIds(memory) {
-    return normaliseTwinMemory(memory).recentLessons.map((key) => key.split(":").slice(1).join(":"));
+    // Keys are "type:questionId" or "type:questionId:variant".
+    return normaliseTwinMemory(memory).recentLessons.map((key) => key.split(":")[1]);
 }
 
 module.exports = {
     TWIN_MISCONCEPTIONS,
+    TWIN_STAGES,
     LEARN_THRESHOLD,
     buildTwinSolution,
+    listTwinVariants,
     findTwinLesson,
+    findMixedLesson,
     emptyTwinMemory,
     chooseTwinMisconception,
     summariseTwinProgress,
