@@ -18,6 +18,7 @@
 // ============================================================
 
 const { questions: QUESTION_BANK } = require("../data/questions");
+const { generateQuestionSet } = require("./questionGenerator");
 const misconceptionService = require("./misconceptionService");
 
 const TWIN_MISCONCEPTIONS = [
@@ -391,10 +392,14 @@ function buildTwinSolution(question, type, variant = 0) {
     return listTwinVariants(question, type)[Number(variant) || 0] || null;
 }
 
+// Hand-written questions first, then a fixed set of generated ones, so the
+// twin keeps getting new problems once the bank's have all been used.
+const TWIN_QUESTIONS = [...QUESTION_BANK, ...generateQuestionSet({ perTemplate: 3, seed: "twin" })];
+
 function questionPools(concept, excludeQuestionIds) {
     const ordered = [
-        ...QUESTION_BANK.filter((q) => q.concept === concept),
-        ...QUESTION_BANK.filter((q) => q.concept !== concept)
+        ...TWIN_QUESTIONS.filter((q) => q.concept === concept),
+        ...TWIN_QUESTIONS.filter((q) => q.concept !== concept)
     ];
     return [ordered.filter((q) => !excludeQuestionIds.includes(q.id)), ordered];
 }

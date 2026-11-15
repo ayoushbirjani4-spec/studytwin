@@ -24,6 +24,7 @@ const {
     getQuestionsByDifficulty,
     getQuestionsByConceptAndDifficulty
 } = require("../data/questions");
+const questionGenerator = require("./questionGenerator");
 
 
 // ============================================================
@@ -163,10 +164,15 @@ function chooseRandomQuestion(questionList) {
 //
 // ============================================================
 
+// Share of practice questions that are freshly generated even while the
+// hand-written bank still has an unused one at the right level.
+const GENERATED_SHARE = 0.5;
+
 function getNextQuestion({
     concept,
     difficulty = 1,
-    recentQuestionIds = []
+    recentQuestionIds = [],
+    random = Math.random
 }) {
 
     if (!concept) {
@@ -178,6 +184,23 @@ function getNextQuestion({
 
     const normalizedDifficulty =
         normalizeDifficulty(difficulty);
+
+    // Unused bank questions at this exact level, else a generated one at
+    // the same level, so the level the ML model asked for is kept instead
+    // of drifting to whatever the bank has left.
+    const unusedAtLevel = removeRecentQuestions(
+        getTargetQuestions(concept, normalizedDifficulty),
+        recentQuestionIds
+    );
+    if (unusedAtLevel.length === 0 || random() < GENERATED_SHARE) {
+        const generated = questionGenerator.generateQuestion({
+            concept,
+            difficulty: normalizedDifficulty,
+            excludeIds: recentQuestionIds,
+            random
+        });
+        if (generated) return generated;
+    }
 
 
     // --------------------------------------------------------
@@ -259,11 +282,30 @@ function getTargetedQuestion({ concept, usedQuestionIds = [], recentQuestionIds 
     if (candidates.length === 0) return null;
 
     const excluded = new Set([...usedQuestionIds, ...recentQuestionIds]);
-    return candidates.find(question => !excluded.has(question.id)) || candidates[0];
+    const fresh = candidates.find(question => !excluded.has(question.id));
+    if (fresh) return fresh;
+
+    // Bank used up: carry on with new questions, still easier to harder.
+    return questionGenerator.generateQuestion({
+        concept,
+        difficulty: Math.min(MAX_DIFFICULTY, 1 + Math.floor(usedQuestionIds.length / 2)),
+        excludeIds: [...excluded]
+    }) || candidates[0];
 }
 
-function getNextMixedQuestion({ recentQuestionIds = [] } = {}) {
+const CONCEPTS = [...new Set(questions.map(question => question.concept))];
+
+function getNextMixedQuestion({ recentQuestionIds = [], random = Math.random } = {}) {
     const candidates = removeRecentQuestions(questions, recentQuestionIds);
+    if (candidates.length === 0 || random() < GENERATED_SHARE) {
+        const generated = questionGenerator.generateQuestion({
+            concept: CONCEPTS[Math.floor(random() * CONCEPTS.length)],
+            difficulty: 1 + Math.floor(random() * MAX_DIFFICULTY),
+            excludeIds: recentQuestionIds,
+            random
+        });
+        if (generated) return generated;
+    }
     return chooseRandomQuestion(candidates.length > 0 ? candidates : questions);
 }
 
@@ -458,6 +500,10 @@ function getQuestionById(id) {
 
     if (!id) {
         return null;
+    }
+
+    if (questionGenerator.isGeneratedId(id)) {
+        return questionGenerator.parseGeneratedId(id);
     }
 
     return getQuestionByIdFromData(id);
