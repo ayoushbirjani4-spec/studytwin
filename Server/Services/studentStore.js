@@ -147,6 +147,25 @@ async function remove(studentId) {
   return result.deletedCount > 0;
 }
 
+// Every student who has joined this class.
+let classIndexReady = false;
+async function listByClass(classCode) {
+  if (!classCode) return [];
+  if (useMemoryStore()) {
+    return [...memoryRecords.values()]
+      .filter((student) => student.classCode === classCode)
+      .map((student) => structuredClone(student));
+  }
+
+  const collection = await getCollection();
+  if (!classIndexReady) {
+    await collection.createIndex({ classCode: 1 }, { sparse: true }).catch(() => {});
+    classIndexReady = true;
+  }
+  const students = await collection.find({ classCode }).limit(200).toArray();
+  return students.map(({ _id, ...record }) => ({ ...record, studentId: _id, concepts: record.concepts || {} }));
+}
+
 function clearMemoryRecords() {
   memoryRecords.clear();
 }
@@ -156,6 +175,7 @@ module.exports = {
   connect,
   save,
   remove,
+  listByClass,
   clearMemoryRecords,
   useMemoryStore
 };

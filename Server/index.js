@@ -30,6 +30,9 @@ const misconceptionService = require("./Services/misconceptionService");
 const twinService = require("./Services/twinService");
 const studentStore = require("./Services/studentStore");
 const attemptLogStore = require("./Services/attemptLogStore");
+const llmReviewService = require("./Services/llmReviewService");
+const classStore = require("./Services/classStore");
+const classReportService = require("./Services/classReportService");
 const { createAnswerRateLimiter } = require("./middleware/rateLimit");
 const { serviceStatus } = require("./middleware/serviceErrors");
 
@@ -42,6 +45,20 @@ const stepCheckRateLimiter = createAnswerRateLimiter({
     perDay: 3000
 });
 const MAX_LIVE_WORK_LENGTH = 2000;
+
+// Each photo is a paid Gemini call, so they get a small budget. The
+// browser shrinks photos to well under this size before sending.
+const photoRateLimiter = createAnswerRateLimiter({
+    perMinute: 6,
+    perDay: 60
+});
+const MAX_PHOTO_BASE64_LENGTH = 3_000_000;
+
+// Creating classes needs no account, so it is kept to a trickle.
+const classCreateRateLimiter = createAnswerRateLimiter({
+    perMinute: 3,
+    perDay: 20
+});
 
 
 // ============================================================
@@ -75,6 +92,10 @@ app.use(cors({
     }
 }));
 
+// Photos of working need a larger body than everything else; this parser
+// runs first for that one route, so the default 100 kB limit still
+// applies everywhere else.
+app.use("/api/work/photo", express.json({ limit: "3200kb" }));
 app.use(express.json());
 
 // Serve the frontend so the tunnel URL opens the app directly.
@@ -359,6 +380,80 @@ app.post(
 // types. Rule-based only; reads no student data and saves nothing.
 //
 // ============================================================
+
+// ============================================================
+// READ WORKING FROM A PHOTO
+// ============================================================
+//
+// POST /api/work/photo   { studentId, questionId, image: "data:image/jpeg;base64,..." }
+//
+// Gemini transcribes the handwritten lines; the student checks them in
+// the working box before anything is marked. The photo is only passed
+// through to Gemini: it is never stored or logged.
+//
+// ============================================================
+
+// Checks the request and the student before the rate limiter, so only
+// photos that will really be sent to Gemini use up the budget.
+async function checkPhotoRequest(req, res, next) {
+    const { studentId, questionId, image } = req.body || {};
+
+    if (typeof studentId !== "string" || typeof questionId !== "string" || typeof image !== "string") {
+        return res.status(400).json({ success: false, error: "studentId, questionId and image are required." });
+    }
+
+    const match = image.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) {
+        return res.status(400).json({ success: false, error: "The photo must be a JPEG, PNG or WebP image." });
+    }
+    if (match[2].length > MAX_PHOTO_BASE64_LENGTH) {
+        return res.status(413).json({ success: false, error: "That photo is too large. Try again a little further away." });
+    }
+
+    try {
+        // Only a student working on this question may send a photo of it,
+        // so the paid Gemini call can't be used freely.
+        const student = await studentStore.get(studentId);
+        const token = req.get("X-Student-Token");
+        if (!student || !token || student.resetToken !== token) {
+            return res.status(403).json({ success: false, error: "Start a practice session first." });
+        }
+        if (!(student.issuedQuestionIds || []).includes(questionId)) {
+            return res.status(403).json({ success: false, error: "This question isn't open for you right now." });
+        }
+        const question = questionService.findQuestionById(questionId);
+        if (!question) {
+            return res.status(404).json({ success: false, error: "Question not found." });
+        }
+        req.photo = { questionText: question.question, mimeType: match[1], imageBase64: match[2] };
+        next();
+    } catch (error) {
+        console.error("Photo request check error:", error.message);
+        const status = serviceStatus(error);
+        res.status(status).json({
+            success: false,
+            error: status === 503 ? "Student progress storage is unavailable." : "Couldn't read that photo. Try again, or type your working."
+        });
+    }
+}
+
+app.post(
+    "/api/work/photo",
+    checkPhotoRequest,
+    photoRateLimiter,
+    async (req, res) => {
+        try {
+            const result = await llmReviewService.readWorkingPhoto(req.photo);
+            res.json({ success: true, ...result });
+        } catch (error) {
+            if (error.code === "PHOTO_NOT_CONFIGURED") {
+                return res.status(503).json({ success: false, error: "Reading photos isn't set up on this server." });
+            }
+            console.error("Photo read error:", error.message);
+            res.status(502).json({ success: false, error: "Couldn't read that photo. Try again, or type your working." });
+        }
+    }
+);
 
 app.post(
     "/api/steps/check",
@@ -1111,6 +1206,108 @@ app.get(
 
 
 // ============================================================
+// CLASSES AND THE TEACHER VIEW
+// ============================================================
+//
+// POST /api/classes                     { name }  -> { code, teacherKey }
+// GET  /api/classes/:code               -> { code, name }  (to confirm before joining)
+// POST /api/students/:studentId/class   { code, displayName } or { code: null } to leave
+// GET  /api/classes/:code/report        X-Teacher-Key
+// GET  /api/classes/:code/export.csv    X-Teacher-Key, ?blind=1 for labelling
+//
+// The teacher key is shown once when the class is created; only its hash
+// is stored. Students appear to the teacher by the name they type.
+//
+// ============================================================
+
+function sendServiceError(res, error, fallback) {
+    const status = serviceStatus(error);
+    if (status >= 500) console.error(fallback, error.message);
+    res.status(status).json({
+        success: false,
+        error: status === 503 ? "Student progress storage is unavailable." : status < 500 ? error.message : fallback
+    });
+}
+
+async function loadClassForTeacher(req, res) {
+    const classRecord = await classStore.get(req.params.code);
+    if (!classRecord || !classStore.teacherKeyMatches(classRecord, req.get("X-Teacher-Key"))) {
+        res.status(403).json({ success: false, error: "That class code and teacher key don't match." });
+        return null;
+    }
+    return classRecord;
+}
+
+app.post("/api/classes", classCreateRateLimiter, async (req, res) => {
+    try {
+        const created = await classStore.create({ name: req.body?.name });
+        res.status(201).json({ success: true, ...created });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to create the class.");
+    }
+});
+
+app.get("/api/classes/:code", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await classStore.get(req.params.code);
+        if (!classRecord) {
+            return res.status(404).json({ success: false, error: "No class has that code. Check it with your teacher." });
+        }
+        res.json({ success: true, code: classRecord.code, name: classRecord.name });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to look up the class.");
+    }
+});
+
+app.post("/api/students/:studentId/class", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const { code, displayName } = req.body || {};
+        let classRecord = null;
+        if (code !== null && code !== undefined && code !== "") {
+            classRecord = await classStore.get(code);
+            if (!classRecord) {
+                return res.status(404).json({ success: false, error: "No class has that code. Check it with your teacher." });
+            }
+        }
+        const result = await studySessionService.joinClass({
+            studentId: req.params.studentId,
+            resetToken: req.get("X-Student-Token"),
+            classCode: classRecord?.code || null,
+            displayName
+        });
+        res.json({ success: true, ...result, className: classRecord?.name || null });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to join the class.");
+    }
+});
+
+app.get("/api/classes/:code/report", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        res.json({ success: true, ...(await classReportService.buildClassReport(classRecord)) });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to build the class report.");
+    }
+});
+
+app.get("/api/classes/:code/export.csv", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const blind = req.query.blind === "1";
+        const rows = await classReportService.exportClassAttempts(classRecord, { blind });
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition",
+            `attachment; filename="studytwin-${classRecord.code}${blind ? "-to-label" : ""}.csv"`);
+        res.send(classReportService.toCsv(rows));
+    } catch (error) {
+        sendServiceError(res, error, "Unable to export the class.");
+    }
+});
+
+
+// ============================================================
 // 404 HANDLER
 // ============================================================
 
@@ -1131,6 +1328,18 @@ app.use(
 
     }
 );
+
+// Request bodies that are too large or not valid JSON get a JSON error
+// the browser can show, instead of Express's default HTML page.
+app.use((error, req, res, next) => {
+    if (error?.type === "entity.too.large") {
+        return res.status(413).json({ success: false, error: "That upload is too large." });
+    }
+    if (error?.type === "entity.parse.failed") {
+        return res.status(400).json({ success: false, error: "The request body isn't valid JSON." });
+    }
+    next(error);
+});
 
 
 // ============================================================

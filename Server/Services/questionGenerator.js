@@ -301,8 +301,56 @@ function generateQuestionSet({ perTemplate = 4, seed = "studytwin" } = {}) {
     return set;
 }
 
+// ------------------------------------------------------------
+// Trap questions
+// ------------------------------------------------------------
+//
+// A trap question is one where a particular mistake is tempting and would
+// show in the working. Which templates can show which mistake was checked
+// against the twin's verified mistakes (twinService.listTwinVariants):
+// e.g. a minus inside the brackets is where sign errors happen, and a
+// two-step equation is where students do something to only one side.
+
+const TRAPS = {
+    failed_to_distribute: ["dp1", "dp4", "dp3", "dp2"],
+    sign_error: ["dp2", "dp3", "clt2", "clt4", "clt5"],
+    wrong_inverse_op: ["dp2", "dp3", "io2", "io4", "io6", "eb2", "eb5"],
+    one_sided_op: ["dp1", "dp4", "io5", "io6", "eb4", "eb5"],
+    arithmetic_slip: ["dp3", "dp4", "io5", "io6", "eb4", "eb5", "clt4", "clt5"],
+    combining_unlike_terms: ["clt3", "clt4", "clt5"]
+};
+
+// What the trap was set to catch, shown once the student has answered.
+const TRAP_NOTES = {
+    failed_to_distribute: "This one was set to catch multiplying only the first term in the brackets.",
+    sign_error: "This one was set to catch a lost minus sign.",
+    wrong_inverse_op: "This one was set to catch undoing a step with the wrong operation.",
+    one_sided_op: "This one was set to catch changing only one side of the equation.",
+    arithmetic_slip: "This one was set to catch a slip in the arithmetic.",
+    combining_unlike_terms: "This one was set to catch adding x terms and numbers together."
+};
+
+// A trap for this mistake in this topic. When the mistake can't show in
+// this topic's questions, the topic's hardest questions are used instead.
+function generateTrapQuestion({ misconceptionType, concept, excludeIds = [], random = Math.random } = {}) {
+    const codes = (TRAPS[misconceptionType] || []).filter((code) => TEMPLATES[code].concept === concept);
+    if (!codes.length) return generateQuestion({ concept, difficulty: 3, excludeIds, random });
+
+    const exclude = new Set(excludeIds);
+    for (let attempt = 0; attempt < 60; attempt++) {
+        const code = codes[Math.floor(random() * codes.length)];
+        const values = TEMPLATES[code].params.map(([min, max]) => min + Math.floor(random() * (max - min + 1)));
+        const question = buildQuestion(code, values);
+        if (question && !exclude.has(question.id)) return question;
+    }
+    return null;
+}
+
 module.exports = {
     TEMPLATES,
+    TRAPS,
+    TRAP_NOTES,
+    generateTrapQuestion,
     isGeneratedId,
     parseGeneratedId,
     generateQuestion,

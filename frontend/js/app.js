@@ -158,6 +158,88 @@ function resetLiveSteps() {
   $("liveSteps").classList.add("hidden");
 }
 
+// ============================================================
+// WORKING FROM A PHOTO
+// ============================================================
+//
+// The photo is shrunk in the browser, read by the server (Gemini), and
+// the lines go into the working box for the student to compare with their
+// paper. Nothing is marked until they press Check answer, and the photo
+// itself is never saved.
+
+const PHOTO_MAX_SIDE = 1600;
+let photoRequestId = 0;
+
+function resetPhoto() {
+  photoRequestId += 1;
+  $("photoButton").disabled = false;
+  $("photoStatus").textContent = "";
+  $("photoStatus").classList.remove("is-error");
+  $("photoInput").value = "";
+}
+
+async function shrinkPhoto(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close?.();
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+function setPhotoStatus(text, isError = false) {
+  $("photoStatus").textContent = text;
+  $("photoStatus").classList.toggle("is-error", isError);
+}
+
+async function readPhoto(file) {
+  if (!file || !state.question || state.answered) return;
+  if (!file.type.startsWith("image/")) {
+    setPhotoStatus("That file isn't a photo.", true);
+    return;
+  }
+
+  const requestId = ++photoRequestId;
+  const questionId = state.question.id;
+  $("photoButton").disabled = true;
+  setPhotoStatus("Reading your working…");
+
+  try {
+    const image = await shrinkPhoto(file);
+    const data = await api("/api/work/photo", {
+      method: "POST",
+      body: JSON.stringify({ studentId: state.studentId, questionId, image })
+    });
+    // The student may have moved on while the photo was being read.
+    if (requestId !== photoRequestId || state.question?.id !== questionId || state.answered) return;
+
+    if (!data.readable || !data.lines.length) {
+      setPhotoStatus("Couldn't find maths working in that photo. Try a closer, brighter photo, or type it.", true);
+      return;
+    }
+    $("workInput").value = data.lines.join("\n");
+    if (data.answer && !$("answerInput").value.trim()) {
+      $("answerInput").value = data.answer.replace(/^x\s*=\s*/i, "");
+    }
+    setPhotoStatus(
+      `Read ${data.lines.length} line${data.lines.length === 1 ? "" : "s"}. Check they match your paper and fix any that don't, then press Check answer. The photo isn't saved.`
+    );
+    scheduleLiveCheck();
+    $("workInput").focus();
+  } catch (error) {
+    if (requestId === photoRequestId) {
+      setPhotoStatus(error.message || "Couldn't read that photo. Try again, or type your working.", true);
+    }
+  } finally {
+    if (requestId === photoRequestId) {
+      $("photoButton").disabled = false;
+      $("photoInput").value = "";
+    }
+  }
+}
+
 function scheduleLiveCheck() {
   clearTimeout(liveSteps.timer);
   liveSteps.timer = setTimeout(runLiveCheck, LIVE_CHECK_DELAY_MS);
@@ -244,6 +326,7 @@ function renderQuestion(question) {
   $("answerInput").value = "";
   $("workInput").value = "";
   resetLiveSteps();
+  resetPhoto();
 
   $("answerInput").disabled = false;
   $("workInput").disabled = false;
@@ -255,22 +338,24 @@ function renderQuestion(question) {
 
   $("feedbackPanel").classList.add("hidden");
 
-  const sessionLength = state.targetedPractice?.active ? 3 : 5;
-  const progress = Math.min(
-    100,
-    (((state.questionNumber - 1) % sessionLength) + 1) *
-      (100 / sessionLength)
-  );
-
-  $("progressBar").style.width = `${progress}%`;
-
-  $("progressText").textContent =
-    `Question ${((state.questionNumber - 1) % sessionLength) + 1} of ${sessionLength}`;
+  const trap = state.targetedPractice?.active ? state.targetedPractice : null;
+  if (trap) {
+    // A trap round fills up with the streak, not the question count.
+    const goal = trap.goal || 5;
+    $("progressBar").style.width = `${Math.min(100, ((trap.streak || 0) / goal) * 100)}%`;
+    $("progressText").textContent =
+      `Trap ${trap.attempts + 1} · ${trap.streak || 0} of ${goal} in a row`;
+  } else {
+    const sessionLength = 5;
+    const position = ((state.questionNumber - 1) % sessionLength) + 1;
+    $("progressBar").style.width = `${position * (100 / sessionLength)}%`;
+    $("progressText").textContent = `Question ${position} of ${sessionLength}`;
+  }
 
   const targetedBanner = $("targetedPracticeBanner");
-  if (state.targetedPractice?.active) {
+  if (trap) {
     targetedBanner.textContent =
-      `Focused practice: ${state.targetedPractice.label}. Three questions build from easier to harder.`;
+      `Trap round: ${trap.label}. Each question is set to catch this mistake. Get ${trap.goal || 5} in a row right to cure it.`;
     targetedBanner.classList.remove("hidden");
   } else {
     targetedBanner.classList.add("hidden");
@@ -479,9 +564,13 @@ function renderFeedback(data) {
   const nextLevel = difficultyName(adaptation.recommendedDifficulty).toLowerCase();
   const previousLevel = difficultyName(state.question?.difficulty).toLowerCase();
   const article = nextLevel === "easy" ? "an" : "a";
-  $("nextLine").textContent = nextLevel === previousLevel
-    ? `Next: another ${nextLevel} question`
-    : `Next: ${article} ${nextLevel} question`;
+  $("nextLine").textContent = data.targetedPractice?.active
+    ? "Next: another trap"
+    : data.targetedPractice?.completed
+      ? "Next: back to mixed practice"
+      : nextLevel === previousLevel
+        ? `Next: another ${nextLevel} question`
+        : `Next: ${article} ${nextLevel} question`;
 
   // Worked solution
   $("solutionSteps").innerHTML =
@@ -518,6 +607,8 @@ function renderFeedback(data) {
   // Disable answer controls
   $("answerInput").disabled = true;
   $("workInput").disabled = true;
+  photoRequestId += 1;
+  $("photoButton").disabled = true;
 
   $("submitButton").disabled = true;
   $("submitButton").textContent = "Checked";
@@ -527,9 +618,21 @@ function renderFeedback(data) {
   if (data.targetedPractice) {
     const target = data.targetedPractice;
     state.targetedPractice = target;
-    targetedResult.textContent = target.completed
-      ? `Focused practice complete: ${target.targetErrors} ${target.label.toLowerCase()} error${target.targetErrors === 1 ? "" : "s"} in ${target.attempts} questions.`
-      : `Focused practice: ${target.attempts} of 3 questions completed.`;
+    const goal = target.goal || 5;
+    let outcome;
+    if (target.cured) {
+      outcome = `Mistake cured. You got ${goal} traps in a row right.`;
+    } else if (target.completed) {
+      outcome = `Round over after ${target.attempts} questions. It caught you ${target.targetErrors} time${target.targetErrors === 1 ? "" : "s"}. Try another round later.`;
+    } else if (target.caught) {
+      outcome = "It caught you, so the streak starts again.";
+    } else if (target.streak > 0) {
+      outcome = `Trap beaten: ${target.streak} of ${goal} in a row.`;
+    } else {
+      outcome = "Not caught, but the answer wasn't right, so the streak starts again.";
+    }
+    targetedResult.textContent = [target.trapNote, outcome].filter(Boolean).join(" ");
+    targetedResult.classList.toggle("is-cured", Boolean(target.cured));
     targetedResult.classList.remove("hidden");
     if (target.completed) {
       $("nextButton").textContent = "Return to mixed practice";
@@ -771,7 +874,7 @@ async function loadDashboard() {
       nextCard.dataset.misconceptionType =
         nextStep.topMistakeCount >= 2 ? nextStep.topMistakeType || "" : "";
       $("practiceSkillButton").textContent = nextStep.topMistakeCount >= 2
-        ? `Practice ${String(nextStep.topMistakeLabel || "").toLowerCase()}`
+        ? `Trap round: ${String(nextStep.topMistakeLabel || "").toLowerCase()}`
         : "Practice this skill";
       nextCard.classList.remove("hidden");
     } else {
@@ -827,7 +930,7 @@ async function loadDashboard() {
                   ? `<span class="mistake-concept">${escapeHtml(conceptName(m.concept))}</span>`
                   : ""}
                 ${m.count >= 2 && m.concept
-                  ? `<button class="practice-mistake-button" data-concept="${escapeHtml(m.concept)}" data-misconception="${escapeHtml(m.type)}">Practice this mistake</button>`
+                  ? `<button class="practice-mistake-button" data-concept="${escapeHtml(m.concept)}" data-misconception="${escapeHtml(m.type)}">Try a trap round</button>`
                   : ""}
               </span>
               <span class="mistake-count">${m.count}×</span>
@@ -856,11 +959,15 @@ async function loadDashboard() {
 
     renderTwinEffect(profile.twinEffect || []);
 
+    renderCuredMistakes(profile.curedMistakes || []);
+
     const targetedSummary = profile.targetedPractice;
     const targetedSummaryCard = $("targetedPracticeSummaryCard");
     if (targetedSummary && targetedSummary.attempts > 0) {
+      const caught = targetedSummary.targetErrors;
       $("targetedPracticeSummary").textContent =
-        `${labelFromType(targetedSummary.type)}: ${targetedSummary.targetErrors} matching errors in ${targetedSummary.attempts} focused questions (${Math.round((targetedSummary.targetErrors / targetedSummary.attempts) * 100)}%).`;
+        `${labelFromType(targetedSummary.type)}: ${targetedSummary.cured ? "cured" : targetedSummary.active ? "in progress" : "not cured yet"}. ` +
+        `Caught ${caught} time${caught === 1 ? "" : "s"} in ${targetedSummary.attempts} trap${targetedSummary.attempts === 1 ? "" : "s"}.`;
       targetedSummaryCard.classList.remove("hidden");
     } else {
       targetedSummaryCard.classList.add("hidden");
@@ -933,6 +1040,43 @@ async function practiceRecommendedSkill() {
   await startSession({
     misconceptionType: card?.dataset.misconceptionType || null
   });
+}
+
+// Mistakes cured in a trap round, and whether they have stayed away.
+function renderCuredMistakes(cured) {
+  const card = $("curedMistakesCard");
+  if (!cured.length) {
+    card.classList.add("hidden");
+    return;
+  }
+  const date = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  $("curedMistakesList").innerHTML = cured.map((item) => {
+    const since = item.answersSince;
+    let status;
+    let statusClass = "";
+    if (item.cameBack > 0) {
+      status = `Came back ${item.cameBack}× in ${since} answer${since === 1 ? "" : "s"} since. Another round will help.`;
+      statusClass = "is-back";
+    } else if (since > 0) {
+      status = `Not seen in ${since} answer${since === 1 ? "" : "s"} since`;
+      statusClass = "is-holding";
+    } else {
+      status = "No answers on this topic since";
+    }
+    return `
+      <div class="cured-row">
+        <div class="cured-head">
+          <span class="cured-name">${escapeHtml(item.label)}</span>
+          <span class="cured-date">Cured ${escapeHtml(date(item.curedAt))} · ${escapeHtml(conceptName(item.concept))}</span>
+        </div>
+        <p class="cured-status ${statusClass}">${escapeHtml(status)}</p>
+        ${item.cameBack > 0
+          ? `<button class="practice-mistake-button" data-concept="${escapeHtml(item.concept)}" data-misconception="${escapeHtml(item.type)}">Try a trap round</button>`
+          : ""}
+      </div>
+    `;
+  }).join("");
+  card.classList.remove("hidden");
 }
 
 function labelFromType(type) {
@@ -1512,10 +1656,69 @@ function renderMotivation(profile) {
   }
 }
 
+// ============================================================
+// CLASS MEMBERSHIP
+// ============================================================
+
+async function renderClassMembership(membership) {
+  if (!membership) {
+    $("classJoined").classList.add("hidden");
+    $("classJoin").classList.remove("hidden");
+    return;
+  }
+  let className = membership.code;
+  try {
+    className = (await api(`/api/classes/${encodeURIComponent(membership.code)}`)).name;
+  } catch {
+    // Keep the code if the name can't be looked up.
+  }
+  $("classJoinedText").textContent = `In ${className} as ${membership.displayName}.`;
+  $("classJoined").classList.remove("hidden");
+  $("classJoin").classList.add("hidden");
+}
+
+async function setClass(code, displayName) {
+  const data = await api(`/api/students/${encodeURIComponent(state.studentId)}/class`, {
+    method: "POST",
+    body: JSON.stringify({ code, displayName })
+  });
+  localStorage.setItem("studytwin_student_id", state.studentId);
+  await renderClassMembership(data.classCode ? { code: data.classCode, displayName: data.displayName } : null);
+}
+
+async function joinClass(event) {
+  event.preventDefault();
+  $("classJoinError").classList.add("hidden");
+  try {
+    await setClass($("classCodeInput").value.trim(), $("classNameInput").value.trim());
+  } catch (error) {
+    $("classJoinError").textContent = error.message;
+    $("classJoinError").classList.remove("hidden");
+  }
+}
+
+async function leaveClass() {
+  if (!confirm("Leave this class? Your teacher will no longer see your progress.")) return;
+  try {
+    await setClass(null);
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+// A teacher's join link: ?class=ABC234 opens the form with the code filled in.
+function prefillClassFromLink() {
+  const code = new URLSearchParams(location.search).get("class");
+  if (!code) return;
+  $("classCodeInput").value = code.toUpperCase().slice(0, 8);
+  $("classJoin").open = true;
+}
+
 async function loadMotivation() {
   try {
     const data = await api(`/api/students/${encodeURIComponent(state.studentId)}`);
     renderMotivation(data.profile);
+    renderClassMembership(data.profile?.classMembership || null);
   } catch (error) {
     // A new student has no record yet: show an empty goal.
     if (error.status === 404) {
@@ -1581,14 +1784,16 @@ $("practiceSkillButton").addEventListener(
   practiceRecommendedSkill
 );
 
-$("commonMistakesList").addEventListener("click", (event) => {
-  const button = event.target.closest(".practice-mistake-button");
-  if (!button) return;
-  practiceMisconception(
-    button.dataset.concept,
-    button.dataset.misconception
-  );
-});
+for (const list of ["commonMistakesList", "curedMistakesList"]) {
+  $(list).addEventListener("click", (event) => {
+    const button = event.target.closest(".practice-mistake-button");
+    if (!button) return;
+    practiceMisconception(
+      button.dataset.concept,
+      button.dataset.misconception
+    );
+  });
+}
 
 $("backToPracticeButton").addEventListener(
   "click",
@@ -1609,6 +1814,8 @@ $("twinLines").addEventListener("click", (event) => {
 });
 
 $("workInput").addEventListener("input", scheduleLiveCheck);
+$("photoButton").addEventListener("click", () => $("photoInput").click());
+$("photoInput").addEventListener("change", (event) => readPhoto(event.target.files?.[0]));
 
 $("answerInput").addEventListener(
   "keydown",
@@ -1647,3 +1854,7 @@ $("themeButton").addEventListener("click", toggleTheme);
 darkQuery.addEventListener("change", updateThemeButton);
 
 loadMotivation();
+
+$("classJoinForm").addEventListener("submit", joinClass);
+$("leaveClassButton").addEventListener("click", leaveClass);
+prefillClassFromLink();

@@ -30,6 +30,7 @@ const mlService = require("./mlService");
 const studentStore = require("./studentStore");
 const attemptLogStore = require("./attemptLogStore");
 const twinService = require("./twinService");
+const questionGenerator = require("./questionGenerator");
 const { randomUUID } = require("node:crypto");
 
 
@@ -56,6 +57,55 @@ function labelMisconception(type) {
 // ============================================================
 // CONSTANTS
 // ============================================================
+
+// Trap rounds: clean answers in a row that cure a mistake, and the most
+// questions a round lasts.
+const TRAP_STREAK_TO_CURE = 5;
+const TRAP_ROUND_MAX = 10;
+
+// A question set to catch this mistake, or the topic's next bank question
+// if no trap can be made.
+function trapQuestion(misconceptionType, concept, excludeIds) {
+    return questionGenerator.generateTrapQuestion({ misconceptionType, concept, excludeIds }) ||
+        questionService.getTargetedQuestion({ concept, recentQuestionIds: excludeIds });
+}
+
+function trapRoundSummary(round) {
+    return {
+        type: round.type,
+        label: labelMisconception(round.type),
+        attempts: round.attempts,
+        targetErrors: round.targetErrors,
+        streak: round.streak || 0,
+        goal: TRAP_STREAK_TO_CURE,
+        maxAttempts: TRAP_ROUND_MAX,
+        cured: Boolean(round.cured),
+        active: round.active,
+        completed: round.completed
+    };
+}
+
+function summariseCuredMistakes(cured = [], attempts = []) {
+    return (cured || [])
+        .map(item => {
+            const since = attempts.filter(row =>
+                row.concept === item.concept &&
+                new Date(row.createdAt) > new Date(item.curedAt) &&
+                row.targetedPracticePhase !== "focused"
+            );
+            const cameBack = since.filter(row =>
+                row.misconceptionDetected && row.misconceptionType === item.type).length;
+            return {
+                type: item.type,
+                label: labelMisconception(item.type),
+                concept: item.concept,
+                curedAt: item.curedAt,
+                answersSince: since.length,
+                cameBack
+            };
+        })
+        .sort((a, b) => new Date(b.curedAt) - new Date(a.curedAt));
+}
 
 const MAX_RECENT_RESULTS = 5;
 const MAX_RECENT_QUESTIONS = 5;
@@ -409,14 +459,27 @@ async function recordAnswer({
         targetPractice?.active && targetPractice.concept === realQuestion.concept
     );
     if (targetedPracticeForAnswer) {
+        // A trap round: every question is set to catch one mistake. A clean,
+        // correct answer extends the streak; anything else resets it.
         targetPractice.attempts++;
-        if (analysis.misconception?.type === targetPractice.type) {
-            targetPractice.targetErrors++;
-        }
-        if (targetPractice.attempts >= 3) {
+        const caught = analysis.misconception?.type === targetPractice.type;
+        if (caught) targetPractice.targetErrors++;
+        targetPractice.streak = demonstratedCorrect && !caught ? (targetPractice.streak || 0) + 1 : 0;
+
+        const cured = targetPractice.streak >= TRAP_STREAK_TO_CURE;
+        if (cured || targetPractice.attempts >= TRAP_ROUND_MAX) {
+            const now = new Date().toISOString();
             targetPractice.active = false;
             targetPractice.completed = true;
-            targetPractice.completedAt = new Date().toISOString();
+            targetPractice.completedAt = now;
+            targetPractice.cured = cured;
+            if (cured) {
+                student.curedMistakes = [
+                    ...(student.curedMistakes || []).filter(item =>
+                        !(item.type === targetPractice.type && item.concept === targetPractice.concept)),
+                    { type: targetPractice.type, concept: targetPractice.concept, curedAt: now, attempts: targetPractice.attempts }
+                ];
+            }
         }
     }
 
@@ -564,10 +627,10 @@ async function recordAnswer({
     let nextQuestion = null;
     if (targetedPracticeForAnswer) {
         if (targetPractice.active) {
-            nextQuestion = questionService.getTargetedQuestion({
-                concept: realQuestion.concept,
-                usedQuestionIds: targetPractice.questionIds || []
-            });
+            nextQuestion = trapQuestion(targetPractice.type, realQuestion.concept, [
+                ...(targetPractice.questionIds || []),
+                ...state.recentQuestionIds
+            ]);
             if (nextQuestion) {
                 targetPractice.questionIds.push(nextQuestion.id);
                 state.recentQuestionIds.push(nextQuestion.id);
@@ -740,13 +803,10 @@ async function recordAnswer({
 
         targetedPractice: targetedPracticeForAnswer
             ? {
-                type: targetPractice.type,
-                label: labelMisconception(targetPractice.type),
-                attempts: targetPractice.attempts,
-                targetErrors: targetPractice.targetErrors,
+                ...trapRoundSummary(targetPractice),
                 errorRate: Number((targetPractice.targetErrors / targetPractice.attempts).toFixed(4)),
-                active: targetPractice.active,
-                completed: targetPractice.completed
+                caught: analysis.misconception?.type === targetPractice.type,
+                trapNote: questionGenerator.TRAP_NOTES[targetPractice.type] || null
             }
             : null,
 
@@ -934,10 +994,7 @@ async function startSession({
     // --------------------------------------------------------
 
     const question = misconceptionType
-        ? questionService.getTargetedQuestion({
-            concept,
-            recentQuestionIds: state.recentQuestionIds
-        })
+        ? trapQuestion(misconceptionType, concept, state.recentQuestionIds)
         : questionService.getNextQuestion({
 
             concept,
@@ -980,6 +1037,8 @@ async function startSession({
             },
             attempts: 0,
             targetErrors: 0,
+            streak: 0,
+            cured: false,
             active: true,
             completed: false,
             questionIds: [question.id]
@@ -1008,14 +1067,7 @@ async function startSession({
             state.currentDifficulty,
 
         targetedPractice: misconceptionType
-            ? {
-                type: misconceptionType,
-                label: labelMisconception(misconceptionType),
-                attempts: 0,
-                targetErrors: 0,
-                active: true,
-                completed: false
-            }
+            ? trapRoundSummary(student.targetedPractice)
             : null,
 
         question:
@@ -1618,6 +1670,15 @@ async function getStudentProfile(studentId) {
         // student's own practice since teaching started?
         twinEffect: twinService.computeTwinEffect(trendAttemptLogs, student.twin),
 
+        // Mistakes cured in a trap round, and whether they have come back
+        // in the student's answers on that topic since.
+        curedMistakes: summariseCuredMistakes(student.curedMistakes, trendAttemptLogs),
+
+        // The class this student joined, if any.
+        classMembership: student.classCode
+            ? { code: student.classCode, displayName: student.displayName || null }
+            : null,
+
         // How far the twin has come across the student's own mistakes.
         twinProgress: twinService.summariseTwinProgress(commonMistakes, student.twin, null),
 
@@ -1735,6 +1796,34 @@ function getAllQuestions() {
 // ============================================================
 // RESET STUDENT
 // ============================================================
+
+// Join a class (or leave it with classCode null). The teacher sees only
+// the name the student types here, so it is kept short and trimmed.
+async function joinClass({ studentId, resetToken, classCode, displayName }) {
+    if (!resetToken) throw requestError("X-Student-Token header is required.", 403);
+
+    const student = await studentStore.get(studentId) ||
+        { studentId, concepts: {}, resetToken, schemaVersion: 1 };
+    if (student.resetToken && student.resetToken !== resetToken) {
+        throw requestError("Invalid student session token.", 403);
+    }
+    student.resetToken = resetToken;
+
+    if (classCode) {
+        const name = String(displayName || "").replace(/\s+/g, " ").trim().slice(0, 30);
+        if (!name) throw requestError("Add your first name or a nickname so your teacher knows it's you.");
+        student.classCode = classCode;
+        student.displayName = name;
+        student.joinedClassAt = new Date().toISOString();
+    } else {
+        student.classCode = null;
+        student.displayName = null;
+        student.joinedClassAt = null;
+    }
+
+    await studentStore.save(student);
+    return { classCode: student.classCode, displayName: student.displayName };
+}
 
 async function resetStudent(studentId, resetToken) {
     if (!resetToken) {
@@ -1865,5 +1954,11 @@ module.exports = {
     getTwinContext,
 
     recordTwinTeaching: (studentId, resetToken, lesson) =>
-        withStudentLock(studentId, () => recordTwinTeaching(studentId, resetToken, lesson))
+        withStudentLock(studentId, () => recordTwinTeaching(studentId, resetToken, lesson)),
+
+    joinClass: (args = {}) =>
+        withStudentLock(args.studentId, () => joinClass(args)),
+
+    labelMisconception,
+    summariseCuredMistakes
 };

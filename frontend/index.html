@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261116-1" />
+  <link rel="stylesheet" href="./css/style.css?v=20261116-5" />
 </head>
 <body>
   <!-- Line icons (lucide shapes), referenced with <use> -->
@@ -28,6 +28,7 @@
     <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.8 9.8 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13" r="3.5"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></symbol>
   </svg>
@@ -84,6 +85,9 @@
         <button id="resetButton" class="nav-item" type="button">
           <svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg><span class="nav-label">Reset my progress</span>
         </button>
+        <a class="nav-item" href="./teacher.html">
+          <svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg><span class="nav-label">For teachers</span>
+        </a>
       </div>
     </aside>
 
@@ -102,6 +106,20 @@
 
           <button id="startButton" class="primary-button" type="button">Start practice</button>
           <p id="startError" class="error-text hidden"></p>
+
+          <div class="class-box">
+            <p id="classJoined" class="class-joined hidden"><span id="classJoinedText"></span> <button id="leaveClassButton" class="text-button" type="button">Leave</button></p>
+            <details id="classJoin" class="class-join">
+              <summary><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg>In a class? Join with your teacher's code</summary>
+              <form id="classJoinForm" class="class-join-form">
+                <label>Class code<input id="classCodeInput" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC234" required /></label>
+                <label>Your first name or a nickname<input id="classNameInput" maxlength="30" autocomplete="off" required /></label>
+                <button class="ghost-button" type="submit">Join class</button>
+                <p class="class-join-note">Your teacher will see this name, your answers and the mistakes StudyTwin finds in them.</p>
+                <p id="classJoinError" class="error-text hidden"></p>
+              </form>
+            </details>
+          </div>
 
           <div class="twin-invite">
             <div class="twin-avatar" aria-hidden="true"><svg class="icon"><use href="#i-twin"/></svg></div>
@@ -202,6 +220,11 @@
           <div class="work-card">
             <label for="workInput">Your working <span>One step per line</span></label>
             <textarea id="workInput" rows="7" spellcheck="false" placeholder="Start by copying the question, then one step per line"></textarea>
+            <div class="photo-row">
+              <button id="photoButton" class="ghost-button photo-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg>Worked on paper? Add a photo</button>
+              <input id="photoInput" type="file" accept="image/*" hidden />
+              <span id="photoStatus" class="photo-status" aria-live="polite"></span>
+            </div>
             <ol id="liveSteps" class="live-steps hidden" aria-live="polite" aria-label="Step-by-step check"></ol>
           </div>
 
@@ -232,6 +255,8 @@
             <div class="hint"><strong>Hint</strong> · <span id="hintText"></span></div>
           </div>
 
+          <p id="targetedPracticeResult" class="trap-result hidden"></p>
+
           <p id="nextLine" class="next-line"></p>
 
           <details class="solution-box">
@@ -247,7 +272,6 @@
             </div>
           </details>
 
-          <p id="targetedPracticeResult" class="muted hidden"></p>
 
           <button id="nextButton" class="primary-button next-button" type="button">Next question</button>
         </section>
@@ -284,6 +308,12 @@
           <div id="twinEffectList"></div>
         </div>
 
+        <div id="curedMistakesCard" class="profile-card hidden">
+          <div class="card-title">Cured mistakes</div>
+          <p class="muted">Each one was cured by getting 5 trap questions in a row right. This shows whether it has stayed away since.</p>
+          <div id="curedMistakesList"></div>
+        </div>
+
         <div id="nextLearningStepCard" class="profile-card next-step-card hidden">
           <div class="card-title">What to practise next</div>
           <div id="nextLearningStepContent"></div>
@@ -309,7 +339,7 @@
         </div>
 
         <div id="targetedPracticeSummaryCard" class="profile-card hidden">
-          <div class="card-title">Focused practice</div>
+          <div class="card-title">Last trap round</div>
           <p id="targetedPracticeSummary" class="muted"></p>
           <p id="targetedPracticeImpact" class="muted"></p>
         </div>
@@ -329,6 +359,6 @@
       <div id="globalError" class="error-banner hidden"></div>
     </main>
   </div>
-  <script src="./js/app.js?v=20261116-1"></script>
+  <script src="./js/app.js?v=20261116-5"></script>
 </body>
 </html>

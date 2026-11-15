@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="StudyTwin for teachers: which mistakes your class makes, and who is stuck on which" />
+  <meta name="referrer" content="no-referrer" />
+  <title>StudyTwin for teachers</title>
+  <script>
+    try {
+      var savedTheme = localStorage.getItem("studytwin_theme");
+      if (savedTheme === "dark" || savedTheme === "light") {
+        document.documentElement.dataset.theme = savedTheme;
+      }
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="./css/style.css?v=20261116-5" />
+</head>
+<body>
+  <div class="teacher-page">
+    <header class="teacher-header">
+      <div class="brand">
+        <strong>StudyTwin for teachers</strong>
+        <span>Which mistakes your class makes, and who is stuck on which</span>
+      </div>
+      <div class="teacher-header-actions">
+        <select id="classSwitcher" class="hidden" aria-label="Your classes"></select>
+        <a class="text-button" href="./">Student app</a>
+      </div>
+    </header>
+
+    <p id="teacherError" class="error-text hidden" role="alert"></p>
+
+    <!-- No class yet: create one, or open one from a saved teacher link -->
+    <section id="setupPanel" class="hidden">
+      <div class="profile-card">
+        <div class="card-title">Create a class</div>
+        <p class="muted">Students join with a short code. You get a private teacher link: it is the only way back into this page, so save it somewhere safe.</p>
+        <form id="createClassForm" class="teacher-form">
+          <label>Class name<input id="classNameInput" maxlength="60" placeholder="Year 8 Maths, Set 2" required /></label>
+          <button class="primary-button" type="submit">Create class</button>
+        </form>
+      </div>
+      <div class="profile-card">
+        <div class="card-title">Open a class</div>
+        <p class="muted">Paste the teacher link you saved when you created the class.</p>
+        <form id="openClassForm" class="teacher-form">
+          <label>Teacher link<input id="teacherLinkInput" autocomplete="off" spellcheck="false" required /></label>
+          <button class="ghost-button" type="submit">Open</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Shown once, right after creating a class -->
+    <section id="createdPanel" class="profile-card created-card hidden">
+      <div class="card-title">Class created. Save your teacher link now</div>
+      <p class="muted">Anyone with this link can see the class, so keep it private. StudyTwin can't show it to you again.</p>
+      <div class="copy-row"><code id="createdTeacherLink"></code><button class="ghost-button" type="button" data-copy="createdTeacherLink">Copy</button></div>
+      <button id="createdDoneButton" class="primary-button" type="button">I've saved it</button>
+    </section>
+
+    <section id="reportPanel" class="hidden">
+      <div class="teacher-title-row">
+        <div>
+          <h1 id="className">Class</h1>
+          <p class="muted" id="reportUpdated"></p>
+        </div>
+        <div class="teacher-title-actions">
+          <button id="refreshButton" class="ghost-button" type="button">Refresh</button>
+          <button id="exportButton" class="ghost-button" type="button">Download answers (CSV)</button>
+          <button id="exportBlindButton" class="ghost-button" type="button">Download for labelling</button>
+        </div>
+      </div>
+
+      <div class="profile-card join-card">
+        <div>
+          <span class="join-label">Class code</span>
+          <strong id="classCode" class="join-code"></strong>
+        </div>
+        <div class="join-help">
+          <p>Students open StudyTwin, choose <em>In a class? Join with your teacher's code</em>, and type this code and their first name. Or share this link:</p>
+          <div class="copy-row"><code id="joinLink"></code><button class="ghost-button" type="button" data-copy="joinLink">Copy</button></div>
+        </div>
+      </div>
+
+      <div class="dashboard-grid teacher-metrics">
+        <div class="metric-card"><span>Students</span><strong id="metricStudents">0</strong><small id="metricActive">0 active this week</small></div>
+        <div class="metric-card"><span>Answers checked</span><strong id="metricAnswers">0</strong><small>Every line of working marked</small></div>
+        <div class="metric-card"><span>Stuck now</span><strong id="metricStuck">0</strong><small id="stuckRule"></small></div>
+      </div>
+
+      <div id="emptyState" class="profile-card hidden">
+        <div class="card-title">No students yet</div>
+        <p class="muted">Once students join and answer a few questions, this page shows who is stuck and on which mistake.</p>
+      </div>
+
+      <div id="stuckCard" class="profile-card hidden">
+        <div class="card-title">Needs help now</div>
+        <div id="stuckList"></div>
+      </div>
+
+      <div id="mistakesCard" class="profile-card hidden">
+        <div class="card-title">Common mistakes</div>
+        <p class="muted">How many students made each mistake in their last 20 answers</p>
+        <div id="mistakesList"></div>
+      </div>
+
+      <div id="studentsCard" class="profile-card hidden">
+        <div class="card-title">Students</div>
+        <div class="table-scroll">
+          <table class="attempts-table teacher-table">
+            <thead><tr><th>Name</th><th>Answers</th><th>Last active</th><th>Recent mastery</th><th>Stuck on</th><th>Cured</th></tr></thead>
+            <tbody id="studentsTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="evidenceCard" class="profile-card hidden">
+        <div class="card-title">Is it working?</div>
+        <p class="muted">For students who taught their twin a mistake: how often they made it in their own practice before and since. Pooled across the class.</p>
+        <div id="evidenceList"></div>
+        <div id="curesSummary" class="evidence-cures"></div>
+        <p class="evidence-caveat">There's no comparison group here, and mistakes often fade with practice anyway, so treat these numbers as a signal, not proof. A fair two-week study is described in STUDY.md in the project.</p>
+      </div>
+    </section>
+  </div>
+
+  <script src="./js/teacher.js?v=20261116-5"></script>
+</body>
+</html>

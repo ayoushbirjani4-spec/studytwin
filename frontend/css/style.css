@@ -821,3 +821,81 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2);
   .goal.is-done .goal-count { background-size: 16px; }
   .side-nav { margin-left: 8px; }
 }
+
+/* Trap rounds */
+.trap-result { margin: 16px 0 0; padding: 12px 16px; border-radius: var(--r-control); background: var(--ink-soft); color: var(--text-2); font-size: 14px; }
+.trap-result.is-cured { background: var(--right-soft); color: var(--right); font-weight: 600; }
+.cured-row { padding: 12px 0; border-top: 1px solid var(--line); }
+.cured-row:first-child { border-top: 0; }
+.cured-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.cured-name { font-size: 14px; font-weight: 500; }
+.cured-date { font-size: 12px; color: var(--muted); }
+.cured-status { margin: 4px 0 0; font-size: 13px; color: var(--text-2); }
+.cured-status.is-holding { color: var(--right); }
+.cured-status.is-back { color: var(--wrong, var(--text-2)); }
+.cured-row .practice-mistake-button { margin-top: 8px; }
+
+/* Working from a photo */
+.photo-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.photo-button { display: inline-flex; align-items: center; gap: 8px; }
+.photo-button:disabled { opacity: 0.6; cursor: progress; }
+.photo-status { flex: 1 1 240px; font-size: 13px; color: var(--text-2); }
+.photo-status.is-error { color: var(--wrong); }
+
+/* Joining a class */
+.class-box { margin-top: 16px; font-size: 14px; }
+.class-joined { margin: 0; color: var(--text-2); }
+.class-join summary { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-2); list-style: none; }
+.class-join summary::-webkit-details-marker { display: none; }
+.class-join[open] summary .icon { transform: rotate(180deg); }
+.class-join-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.class-join-form label { display: flex; flex-direction: column; gap: 8px; }
+.class-join-form .ghost-button { height: 44px; }
+.class-join-note, .class-join-form .error-text { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--muted); }
+.class-join-form .error-text { color: var(--wrong); }
+@media (max-width: 640px) {
+  .class-join-form { grid-template-columns: 1fr; }
+}
+
+/* Teacher page */
+.teacher-page { max-width: 1040px; margin: 0 auto; padding: 32px 24px 64px; }
+.teacher-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 32px; }
+.teacher-header .brand { padding: 0; }
+.teacher-header-actions { display: flex; align-items: center; gap: 16px; white-space: nowrap; }
+.teacher-header-actions select { height: 36px; }
+.teacher-page .profile-card { margin-bottom: 16px; }
+.teacher-form { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 16px; }
+.teacher-form label { display: flex; flex-direction: column; gap: 8px; }
+.teacher-form button { height: 44px; }
+.teacher-title-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.teacher-title-row h1 { margin: 0; font-size: 28px; }
+.teacher-title-row .muted { margin: 4px 0 0; }
+.teacher-title-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.join-card { display: grid; grid-template-columns: auto 1fr; gap: 32px; align-items: center; }
+.join-label { display: block; font-size: 13px; color: var(--muted); }
+.join-code { font-family: "JetBrains Mono", monospace; font-size: 32px; letter-spacing: 0.08em; }
+.join-help p { margin: 0 0 8px; font-size: 14px; color: var(--text-2); }
+.copy-row { display: flex; gap: 8px; align-items: center; min-width: 0; margin: 8px 0 16px; }
+.copy-row code { flex: 1; min-width: 0; padding: 8px 12px; border-radius: var(--r-control); background: var(--raised); font-size: 13px; overflow-wrap: anywhere; }
+.join-help .copy-row { margin-bottom: 0; }
+.teacher-metrics { margin-bottom: 16px; }
+.teacher-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.teacher-row:first-child { border-top: 0; }
+.teacher-row strong { display: block; font-size: 14px; font-weight: 500; }
+.teacher-row-detail { display: block; margin: 4px 0 0; font-size: 13px; color: var(--text-2); }
+.teacher-row-side { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.table-scroll { overflow-x: auto; }
+.teacher-table td, .teacher-table th { white-space: nowrap; }
+.evidence-row { padding: 16px 0; border-top: 1px solid var(--line); }
+.evidence-row:first-child { border-top: 0; }
+.evidence-row strong { font-size: 14px; font-weight: 500; }
+.evidence-cures { margin-top: 8px; font-size: 14px; color: var(--text-2); }
+.evidence-caveat { margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.created-card code { font-size: 13px; }
+@media (max-width: 640px) {
+  .teacher-page { padding: 24px 16px 48px; }
+  .teacher-form, .join-card { grid-template-columns: 1fr; gap: 12px; }
+  .teacher-row { flex-direction: column; align-items: flex-start; }
+}
+
+a.nav-item { text-decoration: none; color: inherit; }
