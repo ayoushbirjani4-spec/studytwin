@@ -1476,7 +1476,9 @@ function detectDistributiveMisconception(
                                     expectedEquation,
 
                                 explanation:
-                                    `Multiply both ${insideParts[1]} and ${insideParts[2]} by ${outsideNumber}. Keep the right side at ${toSides.right}.`
+                                    // e.g. "Multiply both x and 2 by 3" (the coefficient alone
+                                    // read "both  and +2" for a bare x).
+                                    `Multiply both ${insideParts[1] || ""}x and ${insideParts[2].replace(/^\+/, "")} by ${outsideNumber}. Keep the right side at ${toSides.right}.`
                             };
                         }
 

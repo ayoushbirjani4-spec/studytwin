@@ -54,10 +54,15 @@ const difficultyName = (value) =>
     3: "Hard"
   })[Number(value)] || "Easy";
 
-const conceptName = (value) =>
-  String(value || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+// Sentence case: "distributive_property" -> "Distributive property"
+const conceptName = (value) => {
+  const text = String(value || "").replace(/_/g, " ").trim();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+// Server hints sometimes shout a word ("BOTH"); show it in normal case.
+const calmCase = (text) =>
+  String(text || "").replace(/\b([A-Z]{2,})\b/g, (word) => word.toLowerCase());
 
 function showError(message) {
   const error = $("globalError");
@@ -234,7 +239,7 @@ function renderQuestion(question) {
   
 
   $("questionText").textContent =
-    question.question || "Question unavailable.";
+    question.question || "Question unavailable";
 
   $("answerInput").value = "";
   $("workInput").value = "";
@@ -244,7 +249,7 @@ function renderQuestion(question) {
   $("workInput").disabled = false;
 
   $("submitButton").disabled = false;
-  $("submitButton").innerHTML = "Check Answer <span>→</span>";
+  $("submitButton").textContent = "Check answer";
 
   $("submitStatus").textContent = "";
 
@@ -271,12 +276,14 @@ function renderQuestion(question) {
     targetedBanner.classList.add("hidden");
   }
   $("targetedPracticeResult").classList.add("hidden");
-  $("nextButton").textContent = "Continue to Next Question →";
+  $("nextButton").textContent = "Next question";
+  document.querySelector(".solution-box")?.removeAttribute("open");
 
   updateSidebar();
   hideError();
 
-  $("answerInput").focus();
+  // Working comes first, the way students solve on paper.
+  $("workInput").focus();
 }
 
 async function loadConcepts() {
@@ -308,7 +315,7 @@ async function startSession({ misconceptionType = null } = {}) {
     Number($("difficultySelect").value);
 
   $("startButton").disabled = true;
-  $("startButton").innerHTML = "Starting...";
+  $("startButton").textContent = "Starting…";
 
   $("startError").classList.add("hidden");
 
@@ -353,8 +360,7 @@ async function startSession({ misconceptionType = null } = {}) {
     $("startError").classList.remove("hidden");
   } finally {
     $("startButton").disabled = false;
-    $("startButton").innerHTML =
-      'Start Practice <span>→</span>';
+    $("startButton").textContent = "Start practice";
   }
 }
 
@@ -394,26 +400,24 @@ function renderFeedback(data) {
   const correct = demonstratedCorrect;
 
   // Result header styling and messaging
+  // Result header. The mark (tick or circled cross) comes from the
+  // header's class; the title stays short so the student reads on.
   if (correct) {
     $("feedbackHeader").classList.remove("incorrect", "warning");
-    $("feedbackIcon").textContent = "✓";
-    $("feedbackTitle").textContent = "Correct!";
-    $("feedbackMessage").textContent = feedback.message || "Nice work.";
+    $("feedbackTitle").textContent = "Correct";
+    $("feedbackMessage").textContent = feedback.message || "Every step checks out.";
   } else if (rawAnswerCorrect && misconception.detected) {
     $("feedbackHeader").classList.remove("incorrect");
     $("feedbackHeader").classList.add("warning");
-    $("feedbackIcon").textContent = "⚠";
-    $("feedbackTitle").textContent =
-      "Your final answer is correct, but there is an error in your working.";
+    $("feedbackTitle").textContent = "Right answer, but one step needs fixing";
     $("feedbackMessage").textContent =
-      feedback.message || "Review the step identified below.";
+      feedback.message || "Look at the step marked below.";
   } else {
     $("feedbackHeader").classList.remove("warning");
     $("feedbackHeader").classList.add("incorrect");
-    $("feedbackIcon").textContent = "!";
-    $("feedbackTitle").textContent = "Let's learn from this.";
+    $("feedbackTitle").textContent = "Not quite yet";
     $("feedbackMessage").textContent =
-      feedback.message || "Review the steps and try again.";
+      feedback.message || "Look at your steps and try the next one.";
   }
 
   // Misconception
@@ -423,9 +427,14 @@ function renderFeedback(data) {
     $("misconceptionType").textContent =
       conceptName(misconception.type);
 
+    // Don't repeat the sentence the header already shows.
+    const detail = misconception.message || "";
     $("misconceptionMessage").textContent =
-      misconception.message ||
-      "A misconception was detected.";
+      detail === $("feedbackMessage").textContent ? "" : detail;
+    $("misconceptionMessage").classList.toggle(
+      "hidden",
+      !$("misconceptionMessage").textContent
+    );
 
     const incorrectStep = $("incorrectStep");
     if (misconception.incorrectStep) {
@@ -451,9 +460,10 @@ function renderFeedback(data) {
       !misconception.explanation
     );
 
-    $("hintText").textContent =
+    $("hintText").textContent = calmCase(
       misconception.hint ||
-      "Review the worked solution.";
+      "Open the full solution below."
+    );
   } else {
     $("misconceptionBox").classList.add("hidden");
     $("stepCorrection").classList.add("hidden");
@@ -464,38 +474,14 @@ function renderFeedback(data) {
     $("stepExplanation").classList.add("hidden");
   }
 
-  // ML prediction
-  const probability = Math.max(
-    0,
-    Math.min(
-      1,
-      Number(adaptation.probabilityCorrect ?? 0)
-    )
-  );
-
-  const percent = Math.round(probability * 100);
-
-  $("probabilityText").textContent =
-    `${percent}%`;
-
-  $("probabilityBar").style.width =
-    `${percent}%`;
-
-  $("recommendationShort").textContent =
-    percent >= 76
-      ? "Strong"
-      : percent >= 40
-        ? "Balanced"
-        : "Needs support";
-
-  $("recommendationText").textContent =
-    adaptation.recommendation ||
-    "No recommendation returned.";
-
-  $("nextDifficultyText").textContent =
-    difficultyName(
-      adaptation.recommendedDifficulty
-    );
+  // What comes next. The ML prediction still picks the difficulty; the
+  // student sees one calm line instead of a "chance of success" figure.
+  const nextLevel = difficultyName(adaptation.recommendedDifficulty).toLowerCase();
+  const previousLevel = difficultyName(state.question?.difficulty).toLowerCase();
+  const article = nextLevel === "easy" ? "an" : "a";
+  $("nextLine").textContent = nextLevel === previousLevel
+    ? `Next: another ${nextLevel} question`
+    : `Next: ${article} ${nextLevel} question`;
 
   // Worked solution
   $("solutionSteps").innerHTML =
@@ -534,13 +520,8 @@ function renderFeedback(data) {
   $("workInput").disabled = true;
 
   $("submitButton").disabled = true;
-  $("submitButton").textContent =
-    "Answer Submitted";
-
-  $("submitStatus").textContent =
-    correct
-      ? "Answer recorded."
-      : "Answer recorded — review the feedback below.";
+  $("submitButton").textContent = "Checked";
+  $("submitStatus").textContent = "";
 
   const targetedResult = $("targetedPracticeResult");
   if (data.targetedPractice) {
@@ -557,10 +538,8 @@ function renderFeedback(data) {
 
   $("feedbackPanel").classList.remove("hidden");
 
-  window.scrollTo({
-    top: document.body.scrollHeight,
-    behavior: "smooth"
-  });
+  // Bring the result into view, starting at its title.
+  $("feedbackPanel").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function submitAnswer() {
@@ -575,22 +554,22 @@ async function submitAnswer() {
   const work =
     $("workInput").value.trim();
 
-  if (!studentAnswer) {
+  if (!work) {
     showError(
-      "Enter an answer before checking it."
+      "Write your working first. StudyTwin checks each step, not just the final answer."
     );
 
-    $("answerInput").focus();
+    $("workInput").focus();
 
     return;
   }
 
-  if (!work) {
+  if (!studentAnswer) {
     showError(
-      "Show your steps first. StudyTwin finds the mistake in your work, not just your final answer."
+      "Add your final answer, then check it."
     );
 
-    $("workInput").focus();
+    $("answerInput").focus();
 
     return;
   }
@@ -600,8 +579,7 @@ async function submitAnswer() {
   state.submitting = true;
   $("submitButton").disabled = true;
 
-  $("submitButton").innerHTML =
-    "Analyzing...";
+  $("submitButton").textContent = "Checking…";
 
   try {
     const data = await api(
@@ -638,8 +616,7 @@ async function submitAnswer() {
 
     $("submitButton").disabled = false;
 
-    $("submitButton").innerHTML =
-      'Check Answer <span>→</span>';
+    $("submitButton").textContent = "Check answer";
   } finally {
     state.submitting = false;
   }
@@ -689,23 +666,23 @@ async function loadDashboard() {
 
     const profile = data.profile;
 
+    // Whole percentages everywhere on the dashboard.
     $("profileAccuracy").textContent =
-      `${Number(
-        profile.overall?.accuracyPercent || 0
-      )}%`;
+      `${Math.round(Number(profile.overall?.accuracyPercent || 0))}%`;
 
+    const answered = profile.overall?.attempts || 0;
     $("profileAttempts").textContent =
-      `${profile.overall?.attempts || 0} attempts`;
+      `${answered} answer${answered === 1 ? "" : "s"}`;
 
     // Show final-answer accuracy alongside demonstrated mastery
     // so the distinction is clear.
-    const rawPct = Number(profile.overall?.rawAccuracyPercent || 0);
-    const masteryPct = Number(profile.overall?.accuracyPercent || 0);
+    const rawPct = Math.round(Number(profile.overall?.rawAccuracyPercent || 0));
+    const masteryPct = Math.round(Number(profile.overall?.accuracyPercent || 0));
     const rawSub = $("profileRawAccuracy");
     if (rawSub) {
       if (rawPct !== masteryPct) {
         rawSub.textContent =
-          `${rawPct}% final-answer accuracy`;
+          `${rawPct}% right final answers`;
       } else {
         rawSub.textContent = "";
       }
@@ -719,7 +696,7 @@ async function loadDashboard() {
 
     $("profileRecommendation").textContent =
       profile.recommendation ||
-      "Keep practicing.";
+      "Keep practising";
 
     // Concept mastery
     const concepts =
@@ -765,8 +742,7 @@ async function loadDashboard() {
             .join("")
         : `
           <p class="muted">
-            Complete a few questions to build
-            your learning profile.
+            Answer a few questions to see your mastery by topic
           </p>
         `;
 
@@ -792,8 +768,8 @@ async function loadDashboard() {
       nextCard.dataset.misconceptionType =
         nextStep.topMistakeCount >= 2 ? nextStep.topMistakeType || "" : "";
       $("practiceSkillButton").textContent = nextStep.topMistakeCount >= 2
-        ? `Practice ${nextStep.topMistakeLabel} →`
-        : "Practice this skill →";
+        ? `Practice ${String(nextStep.topMistakeLabel || "").toLowerCase()}`
+        : "Practice this skill";
       nextCard.classList.remove("hidden");
     } else {
       nextCard.classList.add("hidden");
@@ -832,7 +808,7 @@ async function loadDashboard() {
         .slice(0, 3)
         .map(([type, count]) => ({
           type,
-          label: String(type).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+          label: conceptName(type),
           count
         }));
     }
@@ -875,6 +851,8 @@ async function loadDashboard() {
       trendCard.classList.add("hidden");
     }
 
+    renderTwinEffect(profile.twinEffect || []);
+
     const targetedSummary = profile.targetedPractice;
     const targetedSummaryCard = $("targetedPracticeSummaryCard");
     if (targetedSummary && targetedSummary.attempts > 0) {
@@ -893,15 +871,15 @@ async function loadDashboard() {
         .map((attempt) => {
           let resultHtml;
           if (attempt.demonstratedCorrect) {
-            resultHtml = `<span class="result-correct">✓ Correct</span>`;
+            resultHtml = `<span class="result-correct">Correct</span>`;
           } else if (attempt.answerCorrect && attempt.misconceptionDetected) {
-            resultHtml = `<span class="result-warning">⚠ Flawed work</span>`;
+            resultHtml = `<span class="result-warning">Right answer, flawed working</span>`;
           } else {
-            resultHtml = `<span class="result-incorrect">✗ Incorrect</span>`;
+            resultHtml = `<span class="result-incorrect">Not quite</span>`;
           }
 
           const mistakeHtml = attempt.misconceptionType
-            ? `<span class="mistake-tag">${escapeHtml(attempt.misconceptionType)}</span>`
+            ? `<span class="mistake-tag">${escapeHtml(conceptName(attempt.misconceptionType))}</span>`
             : `<span class="muted">—</span>`;
 
           return `
@@ -1185,7 +1163,7 @@ async function chooseTwinLine(index) {
     if (!result.foundMistake) {
       button.classList.remove("twin-line-selected");
       button.classList.add("twin-line-fine");
-      setTwinLineNote(button, "✓ This line is fine. Look again.", "fine");
+      setTwinLineNote(button, "This line is fine, look again", "fine");
       $("twinFixForm").classList.add("hidden");
       twin.selectedIndex = null;
       return;
@@ -1193,7 +1171,7 @@ async function chooseTwinLine(index) {
 
     twin.selectedIndex = index;
     button.classList.add("twin-line-found");
-    setTwinLineNote(button, "✗ This is where your twin went wrong.", "found");
+    setTwinLineNote(button, "Your twin went wrong here", "found");
     $("twinInstruction").classList.add("hidden");
     $("twinFixLabel").textContent = `How should line ${index + 1} look?`;
     $("twinFixInput").value = twin.lesson.lines[index];
@@ -1274,8 +1252,8 @@ async function teachTwin(event) {
 
     $("twinResult").classList.toggle("twin-result-learned", Boolean(memory?.justLearned));
     $("twinResult").querySelector("strong").textContent = memory?.justLearned
-      ? "Your twin learned it!"
-      : "You taught your twin!";
+      ? "Your twin learned it"
+      : "You taught your twin";
     $("twinResultText").textContent =
       `The right answer is ${result.correctAnswer}. ${progressNote}`.trim();
     $("twinResult").classList.remove("hidden");
@@ -1290,7 +1268,7 @@ async function teachTwin(event) {
       }
       renderTwinProgress(twin.progress, false);
       if (memory.justLearned) {
-        $("twinProgressHabit").textContent = "Learned!";
+        $("twinProgressHabit").textContent = "Learned";
       }
     }
     $("twinNextButton").classList.remove("hidden");
@@ -1300,6 +1278,77 @@ async function teachTwin(event) {
   } finally {
     $("twinTeachButton").disabled = false;
   }
+}
+
+// ------------------------------------------------------------
+// The Twin Effect (dashboard)
+// ------------------------------------------------------------
+// For each mistake the student has taught their twin: how often they made
+// it in their own practice before teaching started, and how often since.
+
+function percent(rate) {
+  return `${Math.round((rate || 0) * 100)}%`;
+}
+
+function twinEffectRate(label, stats) {
+  const width = Math.max(stats.rate ? 3 : 0, Math.round((stats.rate || 0) * 100));
+  return `
+    <div class="twin-effect-rate">
+      <span class="twin-effect-rate-label">${label}</span>
+      <div class="twin-effect-track" aria-hidden="true"><div class="twin-effect-fill" style="width:${width}%"></div></div>
+      <span class="twin-effect-rate-value">${stats.errors} in ${stats.attempts} answers (${percent(stats.rate)})</span>
+    </div>`;
+}
+
+function renderTwinEffect(effects) {
+  const card = $("twinEffectCard");
+  if (!effects.length) {
+    card.classList.add("hidden");
+    return;
+  }
+
+  $("twinEffectList").innerHTML = effects.map((effect) => {
+    const name = escapeHtml(TWIN_MISTAKE_NAMES[effect.type] || conceptName(effect.type));
+    const badge = effect.learned
+      ? `<span class="twin-effect-badge">Twin learned it</span>`
+      : `<span class="twin-effect-badge twin-effect-badge-muted">Taught ${effect.taughtCount}×</span>`;
+
+    let headline;
+    let detail = "";
+    switch (effect.status) {
+      case "improved": {
+        const drop = effect.before.rate > 0
+          ? Math.round((1 - effect.after.rate / effect.before.rate) * 100)
+          : 0;
+        headline = `<strong class="twin-effect-good">Down ${drop}%</strong> since you started teaching your twin.`;
+        detail = twinEffectRate("Before", effect.before) + twinEffectRate("Since", effect.after);
+        break;
+      }
+      case "unchanged":
+        headline = "About the same as before so far. Keep teaching and practising.";
+        detail = twinEffectRate("Before", effect.before) + twinEffectRate("Since", effect.after);
+        break;
+      case "not_yet":
+        headline = "Not lower yet. Teaching your twin a few more times can help it stick.";
+        detail = twinEffectRate("Before", effect.before) + twinEffectRate("Since", effect.after);
+        break;
+      case "no_baseline":
+        headline = "You started teaching before we had enough of your earlier answers to compare.";
+        detail = twinEffectRate("Since", effect.after);
+        break;
+      default: // collecting
+        headline = `Answer ${effect.attemptsNeeded} more question${effect.attemptsNeeded === 1 ? "" : "s"} on this topic to see your twin effect.`;
+    }
+
+    return `
+      <div class="twin-effect-row">
+        <div class="twin-effect-row-head"><span class="twin-effect-name">${name}</span>${badge}</div>
+        <p class="twin-effect-headline">${headline}</p>
+        ${detail}
+      </div>`;
+  }).join("");
+
+  card.classList.remove("hidden");
 }
 
 async function openDashboard() {
@@ -1370,11 +1419,12 @@ async function checkConnection() {
   try {
     await api("/api/health");
 
-    $("connectionStatus").innerHTML =
-      '<span class="status-dot"></span> API connected';
+    // Nothing to show when everything works.
+    $("connectionStatus").classList.add("hidden");
   } catch {
-    $("connectionStatus").innerHTML =
-      '<span class="status-dot offline"></span> API offline';
+    $("connectionStatus").textContent =
+      "StudyTwin can't be reached right now, so answers won't be saved. Check your connection and refresh.";
+    $("connectionStatus").classList.remove("hidden");
   }
 }
 
@@ -1426,6 +1476,8 @@ $("backToPracticeButton").addEventListener(
   "click",
   backToPractice
 );
+
+$("practiceNavButton").addEventListener("click", backToPractice);
 
 $("twinStartButton").addEventListener("click", openTwin);
 $("twinSidebarButton").addEventListener("click", openTwin);

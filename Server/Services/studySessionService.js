@@ -1614,6 +1614,10 @@ async function getStudentProfile(studentId) {
 
         targetedPracticeImpact,
 
+        // Has each mistake taught to the twin become rarer in the
+        // student's own practice since teaching started?
+        twinEffect: twinService.computeTwinEffect(trendAttemptLogs, student.twin),
+
         nextLearningStep
     };
 }

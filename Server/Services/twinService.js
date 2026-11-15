@@ -449,9 +449,10 @@ function findMixedLesson({
 // ------------------------------------------------------------
 //
 // Stored on the student record as `twin`:
-//   taught:        { [misconception]: successful teachings }
-//   lastTaughtAt:  { [misconception]: ISO time }
-//   recentLessons: ["misconception:questionId", ...]  (newest last)
+//   taught:         { [misconception]: successful teachings }
+//   firstTaughtAt:  { [misconception]: ISO time of the first teaching }
+//   lastTaughtAt:   { [misconception]: ISO time of the latest teaching }
+//   recentLessons:  ["misconception:questionId", ...]  (newest last)
 // Teaching the same misconception LEARN_THRESHOLD times means the twin
 // has learned it and moves on to the student's next mistake.
 
@@ -459,12 +460,13 @@ const LEARN_THRESHOLD = 2;
 const MAX_RECENT_TWIN_LESSONS = 20;
 
 function emptyTwinMemory() {
-    return { taught: {}, lastTaughtAt: {}, recentLessons: [] };
+    return { taught: {}, firstTaughtAt: {}, lastTaughtAt: {}, recentLessons: [] };
 }
 
 function normaliseTwinMemory(memory) {
     return {
         taught: { ...(memory?.taught || {}) },
+        firstTaughtAt: { ...(memory?.firstTaughtAt || {}) },
         lastTaughtAt: { ...(memory?.lastTaughtAt || {}) },
         recentLessons: Array.isArray(memory?.recentLessons) ? [...memory.recentLessons] : []
     };
@@ -533,6 +535,8 @@ function applyTwinTeaching(memory, { misconceptionType, questionId, variant = 0,
 
     const before = hasLearned(twinMemory, misconceptionType);
     twinMemory.taught[misconceptionType] = (twinMemory.taught[misconceptionType] || 0) + 1;
+    twinMemory.firstTaughtAt[misconceptionType] =
+        twinMemory.firstTaughtAt[misconceptionType] || now.toISOString();
     twinMemory.lastTaughtAt[misconceptionType] = now.toISOString();
     twinMemory.recentLessons = [...twinMemory.recentLessons, key].slice(-MAX_RECENT_TWIN_LESSONS);
 
@@ -541,6 +545,89 @@ function applyTwinTeaching(memory, { misconceptionType, questionId, variant = 0,
         counted: true,
         justLearned: !before && hasLearned(twinMemory, misconceptionType)
     };
+}
+
+// ------------------------------------------------------------
+// The Twin Effect: has the student's own mistake become rarer since
+// they started teaching it to their twin?
+// ------------------------------------------------------------
+//
+// For each mistake the student has taught, compare how often they made
+// it in their own practice before teaching started with how often since.
+// Only answers on topics where that mistake has happened are counted, so
+// the comparison is like-for-like. Nothing is claimed until there are
+// enough answers since teaching began.
+
+const TWIN_EFFECT_WINDOW = 20;
+const TWIN_EFFECT_MIN_AFTER = 5;
+const TWIN_EFFECT_MIN_BEFORE = 3;
+
+function rateOf(rows, type) {
+    const errors = rows.filter((row) => row.misconceptionDetected && row.misconceptionType === type).length;
+    return {
+        errors,
+        attempts: rows.length,
+        rate: rows.length ? Number((errors / rows.length).toFixed(4)) : null
+    };
+}
+
+// `attempts`: the student's attempt log rows (any order).
+function computeTwinEffect(attempts, memory) {
+    const twinMemory = normaliseTwinMemory(memory);
+    const rows = (attempts || [])
+        .filter((row) => row && row.createdAt)
+        .slice()
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    return Object.keys(twinMemory.taught)
+        .filter((type) => TWIN_MISCONCEPTIONS.includes(type) && twinMemory.taught[type] > 0)
+        .map((type) => {
+            const since = twinMemory.firstTaughtAt[type] || twinMemory.lastTaughtAt[type] || null;
+            const sinceTime = since ? new Date(since).getTime() : NaN;
+
+            // Topics where this mistake has happened at least once.
+            const concepts = new Set(
+                rows.filter((row) => row.misconceptionType === type).map((row) => row.concept)
+            );
+            const relevant = concepts.size
+                ? rows.filter((row) => concepts.has(row.concept))
+                : rows;
+
+            const before = Number.isNaN(sinceTime)
+                ? []
+                : relevant.filter((row) => new Date(row.createdAt).getTime() < sinceTime).slice(-TWIN_EFFECT_WINDOW);
+            const after = Number.isNaN(sinceTime)
+                ? []
+                : relevant.filter((row) => new Date(row.createdAt).getTime() >= sinceTime).slice(-TWIN_EFFECT_WINDOW);
+
+            const beforeRate = rateOf(before, type);
+            const afterRate = rateOf(after, type);
+
+            let status;
+            if (after.length < TWIN_EFFECT_MIN_AFTER) {
+                status = "collecting";
+            } else if (before.length < TWIN_EFFECT_MIN_BEFORE) {
+                status = "no_baseline";
+            } else if (afterRate.rate < beforeRate.rate) {
+                status = "improved";
+            } else if (afterRate.rate === beforeRate.rate) {
+                status = "unchanged";
+            } else {
+                status = "not_yet";
+            }
+
+            return {
+                type,
+                taughtCount: twinMemory.taught[type],
+                learned: hasLearned(twinMemory, type),
+                since,
+                status,
+                attemptsNeeded: Math.max(0, TWIN_EFFECT_MIN_AFTER - after.length),
+                before: beforeRate,
+                after: afterRate
+            };
+        })
+        .sort((a, b) => b.taughtCount - a.taughtCount);
 }
 
 function recentTwinQuestionIds(memory) {
@@ -560,6 +647,7 @@ module.exports = {
     chooseTwinMisconception,
     summariseTwinProgress,
     applyTwinTeaching,
+    computeTwinEffect,
     recentTwinQuestionIds,
     // exported for tests
     parseQuestion,
