@@ -114,4 +114,10 @@ test("the student profile includes the Twin Effect", async (t) => {
   assert.equal(profile.twinEffect.length, 1);
   assert.equal(profile.twinEffect[0].status, "improved");
   assert.equal(profile.twinEffect[0].after.rate, 0.1);
+
+  // Motivation data for the goal ring, streak and twin growth.
+  assert.equal(profile.activity.checkedAt.length, 20);
+  assert.equal(profile.activity.checkedAt[0], at(0), "oldest first");
+  assert.equal(profile.activity.checkedAt.at(-1), at(109), "newest last");
+  assert.equal(profile.twinProgress.learnedCount, 1);
 });

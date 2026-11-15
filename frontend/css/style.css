@@ -1,32 +1,41 @@
 /* ============================================================
-   StudyTwin — a maths exercise book
-   Paper neutrals, ink-blue for the one main action, and a
-   teacher's green and red pen for right and wrong steps.
+   StudyTwin
+   Two themes: "fresh and bright" (default, a new notebook on a
+   bright desk) and "night study" (deep ink, easy on the eyes).
+   Calm surfaces everywhere; squared paper only on the sheets of
+   working. Ink blue marks the main action, a teacher's green and
+   red pen mark right and wrong steps.
    Signature: hand-drawn margin marks (tick, circled cross).
    ============================================================ */
 
 :root {
-  /* Paper ramp */
-  --page: #f7f4ee;
-  --card: #fdfbf7;
-  --raised: #efe9df;
-  --text: #1f1b16;
-  --text-2: #5e554a;
-  --muted: #7b7266;
-  --line: rgba(31, 27, 22, 0.09);
-  --line-strong: rgba(31, 27, 22, 0.16);
-  --grid: rgba(31, 27, 22, 0.055);
+  color-scheme: light;
 
-  /* Ink: the main action only */
+  /* Fresh and bright: cool white ramp */
+  --page: #f5f7fa;
+  --card: #ffffff;
+  --raised: #eceff4;
+  --text: #111827;
+  --text-2: #4b5565;
+  --muted: #6b7487;
+  --line: rgba(17, 24, 39, 0.08);
+  --line-strong: rgba(17, 24, 39, 0.15);
+  --grid: rgba(17, 24, 39, 0.05);
+
+  /* Ink: accent, used sparingly */
   --ink: #2847a8;
-  --ink-press: #1f3a8c;
   --ink-soft: rgba(40, 71, 168, 0.08);
 
+  /* The main action button */
+  --action-bg: #2847a8;
+  --action-hover: #1f3a8c;
+  --action-text: #ffffff;
+
   /* Teacher's pen */
-  --right: #1f7a4d;
-  --right-soft: rgba(31, 122, 77, 0.08);
-  --wrong: #b8322b;
-  --wrong-soft: rgba(184, 50, 43, 0.07);
+  --right: #15803d;
+  --right-soft: rgba(21, 128, 61, 0.08);
+  --wrong: #c42b2b;
+  --wrong-soft: rgba(196, 43, 43, 0.07);
 
   /* Type */
   --font: "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -37,11 +46,65 @@
   --r-card: 14px;
   --r-panel: 16px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --shadow: 0 1px 2px rgba(31, 27, 22, 0.05);
+  --shadow: 0 1px 2px rgba(17, 24, 39, 0.05);
 
   /* Margin marks (teacher's pen), drawn as SVG */
-  --mark-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231f7a4d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13.2c2.1 1.5 3.6 3.3 4.7 5.4C11.5 12.2 15.4 7.6 20.4 4.6'/%3E%3C/svg%3E");
-  --mark-cross: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b8322b' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13.1 3.4c4.6.3 7.8 4 7.4 8.7-.4 4.8-4.3 8.2-9 7.9-4.6-.3-7.8-4.1-7.4-8.7.3-3.7 2.6-6.6 6.1-7.6'/%3E%3Cpath d='M9.2 9.1l5.8 6M15.1 9.2l-5.9 5.7'/%3E%3C/svg%3E");
+  --mark-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2315803d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13.2c2.1 1.5 3.6 3.3 4.7 5.4C11.5 12.2 15.4 7.6 20.4 4.6'/%3E%3C/svg%3E");
+  --mark-cross: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c42b2b' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13.1 3.4c4.6.3 7.8 4 7.4 8.7-.4 4.8-4.3 8.2-9 7.9-4.6-.3-7.8-4.1-7.4-8.7.3-3.7 2.6-6.6 6.1-7.6'/%3E%3Cpath d='M9.2 9.1l5.8 6M15.1 9.2l-5.9 5.7'/%3E%3C/svg%3E");
+}
+
+/* Night study: deep ink ramp. Used when the student picks it, or when
+   their device is in dark mode and they haven't chosen light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0b0d14;
+    --card: #11141c;
+    --raised: #1a1e28;
+    --text: #eef0f5;
+    --text-2: #a3a9b8;
+    --muted: #7a8296;
+    --line: rgba(238, 240, 245, 0.08);
+    --line-strong: rgba(238, 240, 245, 0.14);
+    --grid: rgba(238, 240, 245, 0.045);
+    --ink: #8ea8ff;
+    --ink-soft: rgba(142, 168, 255, 0.12);
+    --action-bg: #eef0f5;
+    --action-hover: #d6dbe6;
+    --action-text: #0b0d14;
+    --right: #4cc38a;
+    --right-soft: rgba(76, 195, 138, 0.1);
+    --wrong: #ef6b6f;
+    --wrong-soft: rgba(239, 107, 111, 0.1);
+    --shadow: none;
+    --mark-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234cc38a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13.2c2.1 1.5 3.6 3.3 4.7 5.4C11.5 12.2 15.4 7.6 20.4 4.6'/%3E%3C/svg%3E");
+    --mark-cross: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ef6b6f' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13.1 3.4c4.6.3 7.8 4 7.4 8.7-.4 4.8-4.3 8.2-9 7.9-4.6-.3-7.8-4.1-7.4-8.7.3-3.7 2.6-6.6 6.1-7.6'/%3E%3Cpath d='M9.2 9.1l5.8 6M15.1 9.2l-5.9 5.7'/%3E%3C/svg%3E");
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0b0d14;
+  --card: #11141c;
+  --raised: #1a1e28;
+  --text: #eef0f5;
+  --text-2: #a3a9b8;
+  --muted: #7a8296;
+  --line: rgba(238, 240, 245, 0.08);
+  --line-strong: rgba(238, 240, 245, 0.14);
+  --grid: rgba(238, 240, 245, 0.045);
+  --ink: #8ea8ff;
+  --ink-soft: rgba(142, 168, 255, 0.12);
+  --action-bg: #eef0f5;
+  --action-hover: #d6dbe6;
+  --action-text: #0b0d14;
+  --right: #4cc38a;
+  --right-soft: rgba(76, 195, 138, 0.1);
+  --wrong: #ef6b6f;
+  --wrong-soft: rgba(239, 107, 111, 0.1);
+  --shadow: none;
+  --mark-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234cc38a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13.2c2.1 1.5 3.6 3.3 4.7 5.4C11.5 12.2 15.4 7.6 20.4 4.6'/%3E%3C/svg%3E");
+  --mark-cross: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ef6b6f' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13.1 3.4c4.6.3 7.8 4 7.4 8.7-.4 4.8-4.3 8.2-9 7.9-4.6-.3-7.8-4.1-7.4-8.7.3-3.7 2.6-6.6 6.1-7.6'/%3E%3Cpath d='M9.2 9.1l5.8 6M15.1 9.2l-5.9 5.7'/%3E%3C/svg%3E");
 }
 
 /* ------------------------------------------------------------
@@ -97,13 +160,13 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2);
   padding: 0 20px;
   border: 0;
   border-radius: 10px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--action-bg);
+  color: var(--action-text);
   font-weight: 500;
   white-space: nowrap;
   transition: background-color 150ms var(--ease), transform 120ms var(--ease);
 }
-.primary-button:hover { background: var(--ink-press); }
+.primary-button:hover { background: var(--action-hover); }
 .primary-button:active { transform: scale(0.98); }
 .primary-button:disabled { opacity: 0.5; cursor: default; transform: none; }
 
@@ -704,4 +767,57 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2);
 @media (prefers-reduced-motion: reduce) {
   .feedback-panel, .twin-shake { animation: none; }
   * { transition-duration: 0ms !important; }
+}
+
+/* ------------------------------------------------------------
+   Today: daily goal ring and study streak
+   ------------------------------------------------------------ */
+
+.today {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 12px;
+  border-radius: var(--r-card);
+  background: var(--page);
+}
+.goal { position: relative; flex: 0 0 40px; width: 40px; height: 40px; }
+.goal-ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+.goal-track { fill: none; stroke: var(--raised); stroke-width: 3.5; }
+.goal-value {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 100;
+}
+.goal.is-done .goal-value { stroke: var(--right); }
+.goal-count {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.goal.is-done .goal-count { font-size: 0; background: var(--mark-tick) center / 20px no-repeat; }
+.today-text { min-width: 0; }
+.today-text strong { display: block; font-size: 14px; font-weight: 500; }
+.today-text span { display: block; font-size: 13px; color: var(--muted); }
+
+/* Twin growth on the start screen */
+.twin-growth { margin-top: 12px; }
+.twin-growth span { display: block; font-size: 13px; color: var(--text); }
+.twin-growth .twin-progress-track { margin-top: 8px; max-width: 240px; }
+
+@media (max-width: 850px) {
+  .today { margin: 0 0 0 auto; padding: 0; background: none; }
+  .today-text { display: none; }
+  .goal { flex-basis: 32px; width: 32px; height: 32px; }
+  .goal-count { font-size: 12px; }
+  .goal.is-done .goal-count { background-size: 16px; }
+  .side-nav { margin-left: 8px; }
 }

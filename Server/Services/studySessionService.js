@@ -1618,6 +1618,18 @@ async function getStudentProfile(studentId) {
         // student's own practice since teaching started?
         twinEffect: twinService.computeTwinEffect(trendAttemptLogs, student.twin),
 
+        // How far the twin has come across the student's own mistakes.
+        twinProgress: twinService.summariseTwinProgress(commonMistakes, student.twin, null),
+
+        // When each answer was checked (newest last). The browser turns
+        // these into "today" and a day streak in the student's own time zone.
+        activity: {
+            checkedAt: trendChronological
+                .map(row => row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt)
+                .filter(Boolean)
+                .slice(-400)
+        },
+
         nextLearningStep
     };
 }

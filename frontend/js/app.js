@@ -610,6 +610,8 @@ async function submitAnswer() {
     }
 
     renderFeedback(data);
+    // Refresh today's goal and streak (no need to wait for it).
+    loadMotivation();
   } catch (error) {
     showError(error.message ||
       "StudyTwin could not confirm that your answer was fully saved. Check your profile before retrying.");
@@ -665,6 +667,7 @@ async function loadDashboard() {
     );
 
     const profile = data.profile;
+    renderMotivation(profile);
 
     // Whole percentages everywhere on the dashboard.
     $("profileAccuracy").textContent =
@@ -1221,6 +1224,7 @@ async function teachTwin(event) {
 
     twin.solved = true;
     twin.taughtCount += 1;
+    loadMotivation();
 
     const button = twinLineButton(twin.selectedIndex);
     button.classList.remove("twin-line-selected", "twin-line-found");
@@ -1406,6 +1410,120 @@ async function resetStudent() {
   }
 }
 
+// ============================================================
+// LIGHT / DARK THEME
+// ============================================================
+// Default follows the device. A choice made here is remembered and
+// applied before the page draws (see the script in index.html).
+
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+function currentTheme() {
+  return document.documentElement.dataset.theme ||
+    (darkQuery.matches ? "dark" : "light");
+}
+
+function updateThemeButton() {
+  const dark = currentTheme() === "dark";
+  $("themeIcon").setAttribute("href", dark ? "#i-sun" : "#i-moon");
+  $("themeLabel").textContent = dark ? "Light mode" : "Dark mode";
+  $("themeButton").setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+}
+
+function toggleTheme() {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem("studytwin_theme", next);
+  } catch {
+    // Private mode: the choice lasts for this visit only.
+  }
+  updateThemeButton();
+}
+
+// ============================================================
+// MOTIVATION: daily goal, streak, twin growth
+// ============================================================
+// Counted in the student's own time zone from the times their
+// answers were checked (profile.activity.checkedAt).
+
+const DAILY_GOAL = 5;
+
+function localDayKey(value) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+// Today's count, and the run of consecutive days with at least one
+// checked answer, ending today (or yesterday, if today has none yet).
+function studyActivity(checkedAt, now = new Date()) {
+  const days = new Set((checkedAt || []).map(localDayKey));
+  const todayKey = localDayKey(now);
+  const todayCount = (checkedAt || []).filter((time) => localDayKey(time) === todayKey).length;
+
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (!days.has(todayKey)) {
+    day.setDate(day.getDate() - 1);
+  }
+  let streak = 0;
+  while (days.has(localDayKey(day))) {
+    streak += 1;
+    day.setDate(day.getDate() - 1);
+  }
+  return { todayCount, streak, studiedToday: days.has(todayKey) };
+}
+
+function renderMotivation(profile) {
+  const { todayCount, streak, studiedToday } = studyActivity(profile?.activity?.checkedAt);
+  const done = todayCount >= DAILY_GOAL;
+
+  $("goalRing").classList.toggle("is-done", done);
+  $("goalProgress").style.strokeDashoffset =
+    String(100 - Math.min(todayCount / DAILY_GOAL, 1) * 100);
+  $("goalCount").textContent = String(Math.min(todayCount, 99));
+  $("goalText").textContent = done
+    ? "Today's goal done"
+    : `${todayCount} of ${DAILY_GOAL} today`;
+
+  $("streakText").textContent =
+    streak >= 2
+      ? `${streak}-day streak`
+      : streak === 1
+        ? (studiedToday ? "Day 1 of your streak" : "Answer one today to keep your streak")
+        : "Answer one to start a streak";
+
+  $("todayBlock").setAttribute(
+    "aria-label",
+    `${todayCount} of ${DAILY_GOAL} questions today. ${$("streakText").textContent}`
+  );
+
+  // Twin growth on the start screen.
+  const growth = profile?.twinProgress;
+  if (growth && growth.totalCount > 0) {
+    $("twinGrowthText").textContent =
+      growth.totalCount === 1
+        ? (growth.learnedCount === 1 ? "Your twin has learned your mistake" : "Your twin is still learning your mistake")
+        : `Your twin has learned ${growth.learnedCount} of ${growth.totalCount} of your mistakes`;
+    $("twinGrowthFill").style.width =
+      `${Math.round((growth.learnedCount / growth.totalCount) * 100)}%`;
+    $("twinGrowth").classList.remove("hidden");
+  } else {
+    $("twinGrowth").classList.add("hidden");
+  }
+}
+
+async function loadMotivation() {
+  try {
+    const data = await api(`/api/students/${encodeURIComponent(state.studentId)}`);
+    renderMotivation(data.profile);
+  } catch (error) {
+    // A new student has no record yet: show an empty goal.
+    if (error.status === 404) {
+      renderMotivation(null);
+    }
+  }
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -1522,3 +1640,10 @@ updateSidebar();
 loadConcepts();
 
 checkConnection();
+
+updateThemeButton();
+$("themeButton").addEventListener("click", toggleTheme);
+// Follow the device's light/dark setting until the student picks one.
+darkQuery.addEventListener("change", updateThemeButton);
+
+loadMotivation();

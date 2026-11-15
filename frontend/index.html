@@ -5,10 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="StudyTwin checks your maths working line by line and helps you fix your own mistakes" />
   <title>StudyTwin — Maths working, checked line by line</title>
+  <script>
+    // Apply a saved light/dark choice before the page draws (no flash).
+    try {
+      var savedTheme = localStorage.getItem("studytwin_theme");
+      if (savedTheme === "dark" || savedTheme === "light") {
+        document.documentElement.dataset.theme = savedTheme;
+      }
+    } catch (e) {}
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261115-2" />
+  <link rel="stylesheet" href="./css/style.css?v=20261116-1" />
 </head>
 <body>
   <!-- Line icons (lucide shapes), referenced with <use> -->
@@ -19,6 +28,8 @@
     <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.8 9.8 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></symbol>
   </svg>
 
   <div class="app-shell">
@@ -26,6 +37,18 @@
       <div class="brand">
         <strong>StudyTwin</strong>
         <span>Maths working, checked line by line</span>
+      </div>
+
+      <!-- Today: daily goal ring and study streak -->
+      <div id="todayBlock" class="today" role="status" aria-label="Today's goal">
+        <div id="goalRing" class="goal" aria-hidden="true">
+          <svg class="goal-ring" viewBox="0 0 36 36"><circle class="goal-track" cx="18" cy="18" r="15.9"/><circle id="goalProgress" class="goal-value" cx="18" cy="18" r="15.9"/></svg>
+          <span id="goalCount" class="goal-count">0</span>
+        </div>
+        <div class="today-text">
+          <strong id="goalText">0 of 5 today</strong>
+          <span id="streakText">Answer one to start a streak</span>
+        </div>
       </div>
 
       <nav class="side-nav" aria-label="Main">
@@ -37,6 +60,9 @@
         </button>
         <button id="dashboardButton" class="nav-item" type="button">
           <svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg><span class="nav-label">Your progress</span>
+        </button>
+        <button id="themeButton" class="nav-item" type="button" aria-label="Switch to dark mode">
+          <svg class="icon" aria-hidden="true"><use id="themeIcon" href="#i-moon"/></svg><span id="themeLabel" class="nav-label">Dark mode</span>
         </button>
       </nav>
 
@@ -82,6 +108,10 @@
             <div class="twin-invite-text">
               <strong>Teach your twin</strong>
               <span>Your twin makes the mistakes you make most. Find its wrong line and show it the right step.</span>
+              <div id="twinGrowth" class="twin-growth hidden">
+                <span id="twinGrowthText"></span>
+                <div class="twin-progress-track" aria-hidden="true"><div id="twinGrowthFill" class="twin-progress-fill"></div></div>
+              </div>
             </div>
             <button id="twinStartButton" class="ghost-button" type="button">Open your twin</button>
           </div>
@@ -299,6 +329,6 @@
       <div id="globalError" class="error-banner hidden"></div>
     </main>
   </div>
-  <script src="./js/app.js?v=20261115-2"></script>
+  <script src="./js/app.js?v=20261116-1"></script>
 </body>
 </html>
