@@ -97,7 +97,8 @@ test("the report shows who is stuck, the common mistakes, and pooled evidence", 
     // Taught the twin about sign errors at minute 50, then made them less.
     { studentId: "s1", displayName: "Asha", classCode: code, concepts: {},
       twin: { taught: { sign_error: 2 }, firstTaughtAt: { sign_error: at(50) }, lastTaughtAt: {}, recentLessons: [] },
-      curedMistakes: [{ type: "sign_error", concept: "distributive_property", curedAt: at(60), attempts: 6 }] },
+      curedMistakes: [{ type: "sign_error", concept: "distributive_property", curedAt: at(60), attempts: 6,
+        checkups: [{ days: 2, dueAt: at(62), result: "held" }, { days: 7, dueAt: at(67), result: null }] }] },
     { studentId: "s2", displayName: "Ben", classCode: code, concepts: {},
       twin: { taught: { sign_error: 1 }, firstTaughtAt: { sign_error: at(50) }, lastTaughtAt: {}, recentLessons: [] } },
     // Stuck: 4 of the last 10 answers have the same mistake.
@@ -140,6 +141,7 @@ test("the report shows who is stuck, the common mistakes, and pooled evidence", 
     { total: report.evidence.cures.total, cameBack: report.evidence.cures.cameBack },
     { total: 1, cameBack: 1 }
   );
+  assert.deepEqual(report.evidence.cures.checkups, [{ days: 2, answered: 1, held: 1 }, { days: 7, answered: 0, held: 0 }]);
 });
 
 test("the export numbers students instead of naming them, and the blind version is ready to label", async (t) => {

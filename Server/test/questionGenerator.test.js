@@ -148,3 +148,60 @@ test("a seed always gives the same set", () => {
   assert.deepEqual(a, b);
   assert.equal(new Set(a).size, a.length);
 });
+
+test("dividing by a negative number is a valid step (-3x = -6 gives x = 2)", async (t) => {
+  assert.equal(misconceptionService.equationsEquivalent("-3x = -6", "x = 2"), true);
+  assert.equal(misconceptionService.equationsEquivalent("-3x + 12 = 6", "x = 2"), true);
+  assert.equal(misconceptionService.equationsEquivalent("-3x = -6", "x = -2"), false);
+
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  const question = { id: "neg_mult", question: "Solve: -3(x - 4) = 6", concept: "distributive_property", difficulty: 3, answer: "2",
+    solution_steps: ["-3x + 12 = 6", "-3x = -6", "x = 2"], explanation: "" };
+  const find = questionService.findQuestionById;
+  t.mock.method(questionService, "findQuestionById", (id) => (id === "neg_mult" ? question : find(id)));
+
+  const right = await misconceptionService.analyzeAnswer({
+    questionId: "neg_mult", studentAnswer: "2", work: "-3(x - 4) = 6\n-3x + 12 = 6\n-3x = -6\nx = 2"
+  });
+  assert.equal(right.correct, true);
+  assert.equal(right.misconception.detected, false);
+
+  const sign = await misconceptionService.analyzeAnswer({
+    questionId: "neg_mult", studentAnswer: "-6", work: "-3(x - 4) = 6\n-3x - 12 = 6\n-3x = 18\nx = -6"
+  });
+  assert.equal(sign.misconception.type, "sign_error");
+});
+
+test("x on both sides: moving an x term without changing its sign, or changing one side, is diagnosed", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  // 4x + 3 = x + 15
+  const moved = await misconceptionService.analyzeAnswer({
+    questionId: "xb_002", studentAnswer: "12/5", work: "4x + 3 = x + 15\n5x + 3 = 15\n5x = 12\nx = 12/5"
+  });
+  assert.equal(moved.misconception.type, "wrong_inverse_op");
+  assert.equal(moved.misconception.correctStep, "3x + 3 = 15", "the next worked line, not the final answer");
+
+  const oneSide = await misconceptionService.analyzeAnswer({
+    questionId: "xb_002", studentAnswer: "6", work: "4x + 3 = x + 15\n3x + 3 = x + 15\n2x + 3 = 15\nx = 6"
+  });
+  assert.equal(oneSide.misconception.type, "one_sided_op");
+
+  const right = await misconceptionService.analyzeAnswer({
+    questionId: "xb_002", studentAnswer: "4", work: "4x + 3 = x + 15\n4x = x + 12\n3x = 12\nx = 4"
+  });
+  assert.equal(right.correct, true, "collecting in another order is fine");
+  assert.equal(right.misconception.detected, false);
+});
+
+test("the twin has lessons for x on both sides", () => {
+  for (const id of ["xb_001", "xb_002", "xb_003", "xb_004", "xb_005"]) {
+    const question = questionService.findQuestionById(id);
+    for (const type of ["wrong_inverse_op", "one_sided_op"]) {
+      const [lesson] = twinService.listTwinVariants(question, type);
+      assert.ok(lesson, `${id} ${type}`);
+      assert.equal(lesson.stage, "isolate");
+    }
+  }
+  const lesson = twinService.findTwinLesson({ misconceptionType: "one_sided_op", concept: "x_on_both_sides" });
+  assert.equal(lesson.concept ?? questionService.findQuestionById(lesson.questionId).concept, "x_on_both_sides");
+});

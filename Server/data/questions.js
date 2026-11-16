@@ -409,6 +409,61 @@ const questions = [
 
         explanation:
             "First remove the -7 by adding 7 to both sides, then divide by 5."
+    },
+
+
+    // ========================================================
+    // X ON BOTH SIDES
+    // ========================================================
+
+    {
+        id: "xb_001",
+        question: "Solve: 5x = 2x + 12",
+        concept: "x_on_both_sides",
+        difficulty: 1,
+        answer: "4",
+        solution_steps: ["Subtract 2x from both sides", "3x = 12", "Divide both sides by 3", "x = 4"],
+        explanation: "Collect the x terms on one side first: subtract 2x from both sides."
+    },
+
+    {
+        id: "xb_002",
+        question: "Solve: 4x + 3 = x + 15",
+        concept: "x_on_both_sides",
+        difficulty: 2,
+        answer: "4",
+        solution_steps: ["Subtract x from both sides", "3x + 3 = 15", "Subtract 3 from both sides", "3x = 12", "Divide both sides by 3", "x = 4"],
+        explanation: "Subtract x from both sides to get the x terms together, then solve as a two-step equation."
+    },
+
+    {
+        id: "xb_003",
+        question: "Solve: 6x + 2 = 2x + 22",
+        concept: "x_on_both_sides",
+        difficulty: 2,
+        answer: "5",
+        solution_steps: ["Subtract 2x from both sides", "4x + 2 = 22", "Subtract 2 from both sides", "4x = 20", "Divide both sides by 4", "x = 5"],
+        explanation: "Moving 2x to the other side means subtracting it from both sides, not adding it."
+    },
+
+    {
+        id: "xb_004",
+        question: "Solve: 7x - 4 = 3x + 8",
+        concept: "x_on_both_sides",
+        difficulty: 3,
+        answer: "3",
+        solution_steps: ["Subtract 3x from both sides", "4x - 4 = 8", "Add 4 to both sides", "4x = 12", "Divide both sides by 4", "x = 3"],
+        explanation: "Collect the x terms, then undo the - 4 by adding 4 to both sides."
+    },
+
+    {
+        id: "xb_005",
+        question: "Solve: 9x - 5 = 4x + 15",
+        concept: "x_on_both_sides",
+        difficulty: 3,
+        answer: "4",
+        solution_steps: ["Subtract 4x from both sides", "5x - 5 = 15", "Add 5 to both sides", "5x = 20", "Divide both sides by 5", "x = 4"],
+        explanation: "Whatever you do to one side, do to the other: subtract 4x from both sides, then add 5."
     }
 
 ];

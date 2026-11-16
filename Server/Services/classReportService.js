@@ -113,7 +113,14 @@ function cureSummary(students) {
         held: all.filter((c) => c.cameBack === 0 && c.answersSince >= CURE_SETTLED_AFTER).length,
         cameBack: all.filter((c) => c.cameBack > 0).length,
         tooSoon: all.filter((c) => c.cameBack === 0 && c.answersSince < CURE_SETTLED_AFTER).length,
-        settledAfter: CURE_SETTLED_AFTER
+        settledAfter: CURE_SETTLED_AFTER,
+        // Surprise check-ups after 2 and 7 days: of those answered, how many held.
+        checkups: [2, 7].map((days) => {
+            const answered = all
+                .map((c) => (c.checkups || []).find((k) => k.days === days))
+                .filter((k) => k && (k.result === "held" || k.result === "slipped"));
+            return { days, answered: answered.length, held: answered.filter((k) => k.result === "held").length };
+        })
     };
 }
 

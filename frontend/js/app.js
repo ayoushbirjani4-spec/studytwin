@@ -637,6 +637,15 @@ function renderFeedback(data) {
     if (target.completed) {
       $("nextButton").textContent = "Return to mixed practice";
     }
+  } else if (data.checkup && data.checkup.result !== "unsettled") {
+    // A surprise check-up on a cured mistake, revealed only now.
+    const c = data.checkup;
+    const ago = `${c.daysSinceCure} day${c.daysSinceCure === 1 ? "" : "s"} ago`;
+    targetedResult.textContent = c.result === "held"
+      ? `Surprise check-up: that question was set to catch "${c.label}", which you cured ${ago}. Still cured.${c.final ? " That was the last check-up, so this one is sorted." : ""}`
+      : `Surprise check-up: that question was set to catch "${c.label}", which you cured ${ago}, and it came back. A short trap round on your progress page will fix it again.`;
+    targetedResult.classList.toggle("is-cured", c.result === "held");
+    targetedResult.classList.remove("hidden");
   }
 
   $("feedbackPanel").classList.remove("hidden");
@@ -1054,6 +1063,41 @@ function renderCuredMistakes(cured) {
     const since = item.answersSince;
     let status;
     let statusClass = "";
+    let button = "";
+    const checkups = item.checkups || [];
+    const trapButton = `<button class="practice-mistake-button" data-concept="${escapeHtml(item.concept)}" data-misconception="${escapeHtml(item.type)}">Try a trap round</button>`;
+
+    if (checkups.length) {
+      // Surprise check-ups 2 and 7 days after the cure.
+      const describe = (c) => c.result === "held"
+        ? `${c.days}-day check-up: held`
+        : c.result === "slipped"
+          ? `${c.days}-day check-up: it came back`
+          : c.due ? `${c.days}-day check-up: due now` : `${c.days}-day check-up: ${date(c.dueAt)}`;
+      status = item.status === "slipped"
+        ? `${describe(checkups.find((c) => c.result === "slipped"))}. Another trap round will fix it again.`
+        : item.status === "held"
+          ? "Held at both surprise check-ups, after 2 and 7 days."
+          : checkups.map(describe).join(" · ");
+      statusClass = item.status === "slipped" ? "is-back" : item.status === "held" ? "is-holding" : "";
+      if (item.status === "slipped") {
+        button = trapButton;
+      } else if (checkups.some((c) => c.due)) {
+        status += `. It will turn up somewhere in your next ${conceptName(item.concept).toLowerCase()} practice.`;
+        button = `<button class="practice-mistake-button practice-topic-button" data-concept="${escapeHtml(item.concept)}">Practise ${escapeHtml(conceptName(item.concept).toLowerCase())}</button>`;
+      }
+      return `
+        <div class="cured-row">
+          <div class="cured-head">
+            <span class="cured-name">${escapeHtml(item.label)}</span>
+            <span class="cured-date">Cured ${escapeHtml(date(item.curedAt))} · ${escapeHtml(conceptName(item.concept))}</span>
+          </div>
+          <p class="cured-status ${statusClass}">${escapeHtml(status)}</p>
+          ${button}
+        </div>
+      `;
+    }
+
     if (item.cameBack > 0) {
       status = `Came back ${item.cameBack}× in ${since} answer${since === 1 ? "" : "s"} since. Another round will help.`;
       statusClass = "is-back";
@@ -1077,6 +1121,16 @@ function renderCuredMistakes(cured) {
     `;
   }).join("");
   card.classList.remove("hidden");
+}
+
+// Ordinary practice in one topic (a due check-up is served first).
+async function practiceTopic(concept) {
+  if (!concept) return;
+  $("conceptSelect").value = concept;
+  state.concept = concept;
+  $("dashboardPanel").classList.add("hidden");
+  $("startPanel").classList.add("hidden");
+  await startSession();
 }
 
 function labelFromType(type) {
@@ -1146,6 +1200,89 @@ function showTwinError(message) {
   $("twinError").classList.toggle("hidden", !message);
 }
 
+// ------------------------------------------------------------
+// Explain the fix: why was the twin's line wrong?
+// ------------------------------------------------------------
+
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let explainingAvailable = true;
+
+function showExplainForm() {
+  if (!explainingAvailable) return;
+  $("twinExplainInput").value = "";
+  $("twinExplainInput").disabled = false;
+  $("twinExplainButton").disabled = false;
+  $("twinExplainResult").classList.add("hidden");
+  $("twinMicButton").classList.toggle("hidden", !SpeechRecognition);
+  $("twinExplainForm").classList.remove("hidden");
+}
+
+const EXPLAIN_TITLES = {
+  right: "Your twin gets it now.",
+  partly: "Nearly.",
+  not_yet: "Not quite."
+};
+
+async function explainTwin(event) {
+  event.preventDefault();
+  const explanation = $("twinExplainInput").value.trim();
+  if (!explanation || !twin.lesson) {
+    $("twinExplainInput").focus();
+    return;
+  }
+  $("twinExplainButton").disabled = true;
+  $("twinExplainButton").textContent = "Thinking…";
+  try {
+    const result = await api("/api/twin/explain", {
+      method: "POST",
+      body: JSON.stringify({
+        studentId: state.studentId,
+        questionId: twin.lesson.questionId,
+        misconceptionType: twin.lesson.misconceptionType,
+        variant: twin.lesson.variant,
+        correctedLine: twin.correctedLine,
+        explanation
+      })
+    });
+    $("twinExplainResult").textContent = `${EXPLAIN_TITLES[result.verdict]} ${result.feedback}`;
+    $("twinExplainResult").dataset.verdict = result.verdict;
+    $("twinExplainResult").classList.remove("hidden");
+    // A right reason ends it; otherwise the student can have another go.
+    $("twinExplainInput").disabled = result.verdict === "right";
+    $("twinExplainButton").disabled = result.verdict === "right";
+  } catch (error) {
+    if (error.status === 503 && /set up/.test(error.message)) {
+      // No Gemini on this server: explaining is simply not offered.
+      explainingAvailable = false;
+      $("twinExplainForm").classList.add("hidden");
+      return;
+    }
+    $("twinExplainResult").textContent = error.message;
+    $("twinExplainResult").dataset.verdict = "error";
+    $("twinExplainResult").classList.remove("hidden");
+    $("twinExplainButton").disabled = false;
+  } finally {
+    $("twinExplainButton").textContent = "Explain";
+  }
+}
+
+function listenForExplanation() {
+  const recognition = new SpeechRecognition();
+  recognition.lang = navigator.language || "en-GB";
+  recognition.interimResults = false;
+  $("twinMicButton").disabled = true;
+  $("twinMicButton").lastChild.textContent = "Listening…";
+  recognition.onresult = (event) => {
+    $("twinExplainInput").value = event.results[0][0].transcript.slice(0, 300);
+  };
+  recognition.onend = () => {
+    $("twinMicButton").disabled = false;
+    $("twinMicButton").lastChild.textContent = "Say it";
+    $("twinExplainInput").focus();
+  };
+  recognition.start();
+}
+
 async function loadTwinLesson() {
   showTwinError("");
   twin.lesson = null;
@@ -1156,6 +1293,7 @@ async function loadTwinLesson() {
   $("twinQuestion").textContent = "";
   $("twinFixForm").classList.add("hidden");
   $("twinResult").classList.add("hidden");
+  $("twinExplainForm").classList.add("hidden");
   $("twinNextButton").classList.add("hidden");
   $("twinInstruction").classList.remove("hidden");
   $("twinMistakeLabel").textContent = "Getting ready…";
@@ -1384,6 +1522,8 @@ async function teachTwin(event) {
     }
 
     $("twinFixForm").classList.add("hidden");
+    twin.correctedLine = correctedLine;
+    showExplainForm();
 
     const memory = result.memory;
     let progressNote = "";
@@ -1788,6 +1928,10 @@ for (const list of ["commonMistakesList", "curedMistakesList"]) {
   $(list).addEventListener("click", (event) => {
     const button = event.target.closest(".practice-mistake-button");
     if (!button) return;
+    if (button.classList.contains("practice-topic-button")) {
+      practiceTopic(button.dataset.concept);
+      return;
+    }
     practiceMisconception(
       button.dataset.concept,
       button.dataset.misconception
@@ -1807,6 +1951,8 @@ $("twinSidebarButton").addEventListener("click", openTwin);
 $("twinBackButton").addEventListener("click", closeTwin);
 $("twinNextButton").addEventListener("click", loadTwinLesson);
 $("twinFixForm").addEventListener("submit", teachTwin);
+$("twinExplainForm").addEventListener("submit", explainTwin);
+$("twinMicButton").addEventListener("click", listenForExplanation);
 $("twinLines").addEventListener("click", (event) => {
   const button = event.target.closest(".twin-line");
   if (!button || button.disabled) return;

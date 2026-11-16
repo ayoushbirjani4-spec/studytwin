@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261116-5" />
+  <link rel="stylesheet" href="./css/style.css?v=20261116-7" />
 </head>
 <body>
   <div class="teacher-page">
@@ -69,6 +69,7 @@
           <p class="muted" id="reportUpdated"></p>
         </div>
         <div class="teacher-title-actions">
+          <button id="classTwinButton" class="primary-button" type="button">Class twin</button>
           <button id="refreshButton" class="ghost-button" type="button">Refresh</button>
           <button id="exportButton" class="ghost-button" type="button">Download answers (CSV)</button>
           <button id="exportBlindButton" class="ghost-button" type="button">Download for labelling</button>
@@ -126,8 +127,34 @@
         <p class="evidence-caveat">There's no comparison group here, and mistakes often fade with practice anyway, so treat these numbers as a signal, not proof. A fair two-week study is described in STUDY.md in the project.</p>
       </div>
     </section>
+    <!-- Class twin: a starter activity for the projector -->
+    <section id="classTwinPanel" class="class-twin hidden">
+      <div class="class-twin-head">
+        <div>
+          <span class="join-label">Class twin</span>
+          <p id="classTwinMistake" class="class-twin-mistake"></p>
+        </div>
+        <div class="teacher-title-actions">
+          <button id="classTwinFullscreen" class="ghost-button" type="button">Full screen</button>
+          <button id="classTwinClose" class="ghost-button" type="button">Back to class</button>
+        </div>
+      </div>
+      <p id="classTwinSays" class="class-twin-says"></p>
+      <h2 id="classTwinQuestion" class="class-twin-question"></h2>
+      <ol id="classTwinLines" class="class-twin-lines"></ol>
+      <form id="classTwinFixForm" class="teacher-form hidden">
+        <label>What should that line be?<input id="classTwinFixInput" autocomplete="off" spellcheck="false" /></label>
+        <button class="primary-button" type="submit">Teach the twin</button>
+      </form>
+      <form id="classTwinExplainForm" class="teacher-form hidden">
+        <label>Why was it wrong? Type the class's reason<input id="classTwinExplainInput" maxlength="300" autocomplete="off" /></label>
+        <button class="primary-button" type="submit">Check the reason</button>
+      </form>
+      <p id="classTwinResult" class="twin-explain-result hidden" aria-live="polite"></p>
+      <button id="classTwinNext" class="primary-button hidden" type="button">Next mistake</button>
+    </section>
   </div>
 
-  <script src="./js/teacher.js?v=20261116-5"></script>
+  <script src="./js/teacher.js?v=20261116-7"></script>
 </body>
 </html>

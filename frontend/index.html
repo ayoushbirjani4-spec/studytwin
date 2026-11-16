@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261116-5" />
+  <link rel="stylesheet" href="./css/style.css?v=20261116-7" />
 </head>
 <body>
   <!-- Line icons (lucide shapes), referenced with <use> -->
@@ -28,6 +28,7 @@
     <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.8 9.8 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></symbol>
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13" r="3.5"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></symbol>
@@ -195,6 +196,17 @@
             <span id="twinResultText"></span>
           </div>
 
+          <!-- After the fix: the student says why the line was wrong -->
+          <form id="twinExplainForm" class="twin-explain hidden">
+            <label for="twinExplainInput">Now tell your twin <em>why</em> that line was wrong</label>
+            <div class="twin-explain-row">
+              <input id="twinExplainInput" maxlength="300" autocomplete="off" placeholder="You forgot to…" />
+              <button id="twinMicButton" class="ghost-button hidden" type="button" aria-label="Say it instead of typing"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Say it</button>
+              <button id="twinExplainButton" class="primary-button" type="submit">Explain</button>
+            </div>
+            <p id="twinExplainResult" class="twin-explain-result hidden" aria-live="polite"></p>
+          </form>
+
           <div class="twin-actions">
             <button id="twinNextButton" class="primary-button hidden" type="button">Next lesson</button>
           </div>
@@ -310,7 +322,7 @@
 
         <div id="curedMistakesCard" class="profile-card hidden">
           <div class="card-title">Cured mistakes</div>
-          <p class="muted">Each one was cured by getting 5 trap questions in a row right. This shows whether it has stayed away since.</p>
+          <p class="muted">Each one was cured by getting 5 trap questions in a row right. To check it lasts, a surprise trap question turns up in your practice 2 days and 7 days later.</p>
           <div id="curedMistakesList"></div>
         </div>
 
@@ -359,6 +371,6 @@
       <div id="globalError" class="error-banner hidden"></div>
     </main>
   </div>
-  <script src="./js/app.js?v=20261116-5"></script>
+  <script src="./js/app.js?v=20261116-7"></script>
 </body>
 </html>

@@ -54,6 +54,12 @@ const photoRateLimiter = createAnswerRateLimiter({
 });
 const MAX_PHOTO_BASE64_LENGTH = 3_000_000;
 
+// Each explanation is judged by Gemini, so it gets its own small budget.
+const explainRateLimiter = createAnswerRateLimiter({
+    perMinute: 10,
+    perDay: 100
+});
+
 // Creating classes needs no account, so it is kept to a trickle.
 const classCreateRateLimiter = createAnswerRateLimiter({
     perMinute: 3,
@@ -446,7 +452,7 @@ app.post(
             const result = await llmReviewService.readWorkingPhoto(req.photo);
             res.json({ success: true, ...result });
         } catch (error) {
-            if (error.code === "PHOTO_NOT_CONFIGURED") {
+            if (error.code === "GEMINI_NOT_CONFIGURED") {
                 return res.status(503).json({ success: false, error: "Reading photos isn't set up on this server." });
             }
             console.error("Photo read error:", error.message);
@@ -670,6 +676,79 @@ function gradeTwinCorrection(questionId, previousLine, correctedLine) {
     }
     return false;
 }
+
+// ============================================================
+// EXPLAIN THE FIX
+// ============================================================
+//
+// POST /api/twin/explain
+//   { questionId, misconceptionType, variant, correctedLine, explanation,
+//     studentId }          with X-Student-Token, or
+//   { ..., classCode }     with X-Teacher-Key (the class twin)
+//
+// After fixing the twin's line, the student says why it was wrong and
+// Gemini judges the reason. Each judgement is a paid call, so it needs a
+// real student or teacher, a fix that the rules accept, and a budget.
+//
+// ============================================================
+
+app.post("/api/twin/explain", explainRateLimiter, async (req, res) => {
+    const { questionId, misconceptionType, variant = 0, correctedLine, explanation, studentId, classCode } = req.body || {};
+
+    if (typeof questionId !== "string" || typeof misconceptionType !== "string" ||
+        typeof explanation !== "string" || !explanation.trim()) {
+        return res.status(400).json({ success: false, error: "Say why the twin's line was wrong first." });
+    }
+    if (explanation.length > llmReviewService.MAX_EXPLANATION_LENGTH) {
+        return res.status(400).json({ success: false, error: "Keep it to a sentence or two." });
+    }
+
+    try {
+        if (typeof classCode === "string" && classCode) {
+            const classRecord = await classStore.get(classCode);
+            if (!classStore.teacherKeyMatches(classRecord, req.get("X-Teacher-Key"))) {
+                return res.status(403).json({ success: false, error: "That class code and teacher key don't match." });
+            }
+        } else {
+            const student = typeof studentId === "string" ? await studentStore.get(studentId) : null;
+            const token = req.get("X-Student-Token");
+            if (!student || !token || student.resetToken !== token) {
+                return res.status(403).json({ success: false, error: "Start practising first, then teach your twin." });
+            }
+        }
+
+        const question = questionService.findQuestionById(questionId);
+        const lessonVariant = Number.isInteger(variant) && variant >= 0 && variant < 10 ? variant : 0;
+        const lesson = twinService.buildTwinSolution(question, misconceptionType, lessonVariant);
+        if (!lesson) {
+            return res.status(404).json({ success: false, error: "That twin lesson was not found." });
+        }
+        const previousLine = lesson.lines[lesson.wrongIndex - 1];
+        if (!gradeTwinCorrection(questionId, previousLine, correctedLine)) {
+            return res.status(400).json({ success: false, error: "Fix the twin's line first." });
+        }
+
+        const result = await llmReviewService.judgeExplanation({
+            questionText: question.question,
+            previousLine,
+            wrongLine: lesson.lines[lesson.wrongIndex],
+            correctLine: String(correctedLine).trim(),
+            mistakeLabel: studySessionService.labelMisconception(misconceptionType),
+            explanation: explanation.trim()
+        });
+        res.json({ success: true, ...result });
+    } catch (error) {
+        if (error.code === "GEMINI_NOT_CONFIGURED") {
+            return res.status(503).json({ success: false, error: "Explaining isn't set up on this server." });
+        }
+        console.error("Twin explain error:", error.message);
+        const status = serviceStatus(error);
+        res.status(status === 503 ? 503 : 502).json({
+            success: false,
+            error: status === 503 ? "Student progress storage is unavailable." : "Couldn't judge that right now. Try again in a moment."
+        });
+    }
+});
 
 const TWIN_REPLIES = {
     wrongLine: "Hmm, I think that line is fine. Can you look again?",

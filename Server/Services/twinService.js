@@ -109,6 +109,18 @@ function parseQuestion(question) {
         };
     }
 
+    // ax ± b = cx ± d (x on both sides)
+    if ((m = text.match(/^(\d*)x(?:([+-])(\d+))?=(\d*)x([+-])(\d+)$/))) {
+        return {
+            kind: "both",
+            start: question.question.replace(/^\s*solve\s*:\s*/i, "").trim(),
+            a: m[1] === "" ? 1 : Number(m[1]),
+            b: m[2] ? (m[2] === "-" ? -1 : 1) * Number(m[3]) : 0,
+            c: m[4] === "" ? 1 : Number(m[4]),
+            d: (m[5] === "-" ? -1 : 1) * Number(m[6])
+        };
+    }
+
     // ax ± b = c, ax = c, x ± b = c
     if ((m = text.match(new RegExp(`^(-?\\d*)x(?:([+-])(\\d+(?:\\.\\d+)?))?=${NUMBER}$`)))) {
         const a = m[1] === "" ? 1 : m[1] === "-" ? -1 : Number(m[1]);
@@ -276,6 +288,27 @@ function linearVariants(prefix, a, b, c, type) {
     return variants;
 }
 
+// a·x + b = c·x + d: the slip is in moving c·x across, or later on.
+function bothSidesVariants(q, type) {
+    const left = q.a - q.c;
+    if (type === "wrong_inverse_op" || type === "one_sided_op") {
+        // Adds c·x instead of subtracting it, or subtracts it from the left only.
+        const wrongLine = type === "wrong_inverse_op"
+            ? equation(formatLinear(q.a + q.c, q.b), formatNumber(q.d))
+            : equation(formatLinear(left, q.b), `${formatTerm(q.c)} + ${formatNumber(q.d)}`);
+        const variants = [];
+        if (type === "wrong_inverse_op") {
+            const lines = [q.start, wrongLine, ...finishLinear(q.a + q.c, q.b, q.d)];
+            variants.push({ lines, wrongIndex: 1, stage: "isolate" });
+        } else {
+            variants.push({ lines: [q.start, wrongLine], wrongIndex: 1, stage: "isolate" });
+        }
+        // The same mistake can also come later, with the constant or the division.
+        return variants.concat(linearVariants([q.start, equation(formatLinear(left, q.b), formatNumber(q.d))], left, q.b, q.d, type));
+    }
+    return linearVariants([q.start, equation(formatLinear(left, q.b), formatNumber(q.d))], left, q.b, q.d, type);
+}
+
 function divideVariants(q, type) {
     if (type === "wrong_inverse_op") {
         // Divides instead of multiplying.
@@ -321,6 +354,7 @@ function simplifyVariants(q, type) {
 
 const VARIANT_BUILDERS = {
     bracket: bracketVariants,
+    both: bothSidesVariants,
     divide: divideVariants,
     linear: (q, type) => linearVariants([q.start], q.a, q.b, q.c, type),
     simplify: simplifyVariants

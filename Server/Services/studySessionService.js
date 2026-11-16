@@ -85,6 +85,98 @@ function trapRoundSummary(round) {
     };
 }
 
+// ------------------------------------------------------------
+// Cure check-ups
+// ------------------------------------------------------------
+//
+// A mistake cured in a trap round is checked again later, spaced out: one
+// trap question for it is slipped into ordinary practice 2 days after the
+// cure, and again 7 days after. A clean answer means the cure held; making
+// the mistake means it slipped, and the student is offered a new round.
+// An answer that is wrong for some other reason settles nothing, so the
+// check-up is served again later.
+
+const CHECKUP_DAYS = [2, 7];
+const DAY_MS = 24 * 60 * 60 * 1000;
+// A check-up that was late doesn't make the next one due straight after.
+const MIN_CHECKUP_GAP_DAYS = 3;
+
+function scheduleCheckups(curedAt) {
+    const start = new Date(curedAt).getTime();
+    return CHECKUP_DAYS.map(days => ({
+        days,
+        dueAt: new Date(start + days * DAY_MS).toISOString(),
+        questionId: null,
+        result: null,
+        answeredAt: null
+    }));
+}
+
+// The next check-up that is due, for this topic (or any topic if null).
+function dueCheckup(student, concept, now = Date.now()) {
+    for (const item of student.curedMistakes || []) {
+        if (item.slippedAt || (concept && item.concept !== concept)) continue;
+        const next = (item.checkups || []).find(checkup => !checkup.result);
+        if (next && new Date(next.dueAt).getTime() <= now) return { item, checkup: next };
+    }
+    return null;
+}
+
+function serveCheckup(student, concept, excludeIds) {
+    const due = dueCheckup(student, concept);
+    if (!due) return null;
+    const question = questionGenerator.generateTrapQuestion({
+        misconceptionType: due.item.type,
+        concept: due.item.concept,
+        excludeIds
+    });
+    if (!question) return null;
+    due.checkup.questionId = question.id;
+    return question;
+}
+
+// Settle a check-up if this answer was one. Returns what happened, or null.
+function gradeCheckup(student, questionId, misconceptionType, demonstratedCorrect, now = new Date()) {
+    for (const item of student.curedMistakes || []) {
+        const checkup = (item.checkups || []).find(c => !c.result && c.questionId === questionId);
+        if (!checkup) continue;
+
+        const daysSinceCure = Math.max(1, Math.round((now - new Date(item.curedAt)) / DAY_MS));
+        const summary = { type: item.type, label: labelMisconception(item.type), days: checkup.days, daysSinceCure };
+
+        if (misconceptionType === item.type) {
+            checkup.result = "slipped";
+            checkup.answeredAt = now.toISOString();
+            item.slippedAt = now.toISOString();
+            return { ...summary, result: "slipped" };
+        }
+        if (demonstratedCorrect) {
+            checkup.result = "held";
+            checkup.answeredAt = now.toISOString();
+            const next = item.checkups.find(c => !c.result);
+            if (next) {
+                const earliest = now.getTime() + MIN_CHECKUP_GAP_DAYS * DAY_MS;
+                if (new Date(next.dueAt).getTime() < earliest) next.dueAt = new Date(earliest).toISOString();
+            }
+            return { ...summary, result: "held", final: !next };
+        }
+        // Wrong for another reason: try again with a different question
+        // tomorrow, rather than straight away.
+        checkup.questionId = null;
+        checkup.dueAt = new Date(now.getTime() + DAY_MS).toISOString();
+        return { ...summary, result: "unsettled" };
+    }
+    return null;
+}
+
+function cureStatus(item) {
+    if (item.slippedAt) return "slipped";
+    const checkups = item.checkups || [];
+    if (!checkups.length) return "unchecked";
+    if (checkups.every(c => c.result === "held")) return "held";
+    return "checking";
+}
+
 function summariseCuredMistakes(cured = [], attempts = []) {
     return (cured || [])
         .map(item => {
@@ -101,7 +193,12 @@ function summariseCuredMistakes(cured = [], attempts = []) {
                 concept: item.concept,
                 curedAt: item.curedAt,
                 answersSince: since.length,
-                cameBack
+                cameBack,
+                status: cureStatus(item),
+                checkups: (item.checkups || []).map(({ days, dueAt, result, answeredAt }) => ({
+                    days, dueAt, result, answeredAt,
+                    due: !result && !item.slippedAt && new Date(dueAt) <= new Date()
+                }))
             };
         })
         .sort((a, b) => new Date(b.curedAt) - new Date(a.curedAt));
@@ -477,11 +574,25 @@ async function recordAnswer({
                 student.curedMistakes = [
                     ...(student.curedMistakes || []).filter(item =>
                         !(item.type === targetPractice.type && item.concept === targetPractice.concept)),
-                    { type: targetPractice.type, concept: targetPractice.concept, curedAt: now, attempts: targetPractice.attempts }
+                    {
+                        type: targetPractice.type,
+                        concept: targetPractice.concept,
+                        curedAt: now,
+                        attempts: targetPractice.attempts,
+                        checkups: scheduleCheckups(now)
+                    }
                 ];
             }
         }
     }
+
+    // Was this a surprise check-up on a cured mistake?
+    const checkupResult = gradeCheckup(
+        student,
+        realQuestion.id,
+        misconceptionDetected ? analysis.misconception?.type : null,
+        demonstratedCorrect
+    );
 
 
     state.previousCorrect =
@@ -639,22 +750,24 @@ async function recordAnswer({
                 }
             }
         } else if (targetPractice.completed) {
-            nextQuestion = questionService.getNextMixedQuestion({
-                recentQuestionIds: state.recentQuestionIds
-            });
+            nextQuestion = serveCheckup(student, null, state.recentQuestionIds) ||
+                questionService.getNextMixedQuestion({
+                    recentQuestionIds: state.recentQuestionIds
+                });
         }
     } else {
-        nextQuestion = questionService.getNextQuestion({
+        nextQuestion = serveCheckup(student, realQuestion.concept, state.recentQuestionIds) ||
+            questionService.getNextQuestion({
 
-            concept:
-                realQuestion.concept,
+                concept:
+                    realQuestion.concept,
 
-            difficulty:
-                state.currentDifficulty,
+                difficulty:
+                    state.currentDifficulty,
 
-            recentQuestionIds:
-                state.recentQuestionIds
-        });
+                recentQuestionIds:
+                    state.recentQuestionIds
+            });
     }
 
     // Record the raw submission first. If this write or the progress write
@@ -800,6 +913,9 @@ async function recordAnswer({
                     ? analysis.misconception.source || "rules"
                     : analysis.correctnessSource
         },
+
+        // Only shown after answering, so the check-up stays a surprise.
+        checkup: checkupResult,
 
         targetedPractice: targetedPracticeForAnswer
             ? {
@@ -995,7 +1111,7 @@ async function startSession({
 
     const question = misconceptionType
         ? trapQuestion(misconceptionType, concept, state.recentQuestionIds)
-        : questionService.getNextQuestion({
+        : serveCheckup(student, concept, state.recentQuestionIds) || questionService.getNextQuestion({
 
             concept,
 

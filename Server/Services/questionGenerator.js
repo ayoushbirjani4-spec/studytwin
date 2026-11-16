@@ -133,6 +133,20 @@ const twoStepTemplate = (concept, sign) => (a, b, x) => {
     });
 };
 
+// a·x + b = c·x + d, with a - c >= 2 so x stays on the left and it is never a one-liner.
+const bothSidesTemplate = (sign) => (a, b, c, x) => {
+    const left = a - c;
+    const d = left * x + sign * b;
+    const lhs = b === 0 ? term(a) : `${term(a)} ${sign > 0 ? "+" : "-"} ${b}`;
+    return equationQuestion({
+        concept: "x_on_both_sides",
+        text: `${lhs} = ${term(c)} + ${d}`,
+        x,
+        steps: [`Subtract ${term(c)} from both sides`, `${linear(left, sign * b)} = ${d}`, ...solveLinearSteps(left, sign * b, d)],
+        explanation: `Collect the x terms first: subtract ${term(c)} from both sides, then solve as before.`
+    });
+};
+
 function simplifyQuestion(terms, xTotal, constantTotal) {
     const text = terms
         .map((t, i) => (i === 0 ? t : t.startsWith("-") ? `- ${t.slice(1)}` : `+ ${t}`))
@@ -183,6 +197,17 @@ const TEMPLATES = {
     eb3: { concept: "equation_balance", difficulty: 2, params: [[2, 9], [2, 12]], build: multiplyTemplate("equation_balance") },
     eb4: { concept: "equation_balance", difficulty: 3, params: [[2, 6], [1, 12], [1, 10]], build: twoStepTemplate("equation_balance", 1) },
     eb5: { concept: "equation_balance", difficulty: 3, params: [[2, 6], [1, 12], [1, 10]], valid: (a, b, x) => a * x > b, build: twoStepTemplate("equation_balance", -1) },
+
+    // x on both sides: a·x (+/- b) = c·x + d
+    xb1: { concept: "x_on_both_sides", difficulty: 1, params: [[3, 9], [1, 7], [1, 9]],
+        valid: (a, c) => a - c >= 2,
+        build: (a, c, x) => bothSidesTemplate(1)(a, 0, c, x) },
+    xb2: { concept: "x_on_both_sides", difficulty: 2, params: [[3, 9], [1, 9], [1, 7], [1, 9]],
+        valid: (a, b, c) => a - c >= 2,
+        build: bothSidesTemplate(1) },
+    xb3: { concept: "x_on_both_sides", difficulty: 3, params: [[3, 9], [1, 9], [1, 7], [1, 9]],
+        valid: (a, b, c, x) => a - c >= 2 && (a - c) * x > b,
+        build: bothSidesTemplate(-1) },
 
     // Combining like terms
     clt1: { concept: "combining_like_terms", difficulty: 1, params: [[2, 9], [2, 9]],
@@ -314,9 +339,9 @@ function generateQuestionSet({ perTemplate = 4, seed = "studytwin" } = {}) {
 const TRAPS = {
     failed_to_distribute: ["dp1", "dp4", "dp3", "dp2"],
     sign_error: ["dp2", "dp3", "clt2", "clt4", "clt5"],
-    wrong_inverse_op: ["dp2", "dp3", "io2", "io4", "io6", "eb2", "eb5"],
-    one_sided_op: ["dp1", "dp4", "io5", "io6", "eb4", "eb5"],
-    arithmetic_slip: ["dp3", "dp4", "io5", "io6", "eb4", "eb5", "clt4", "clt5"],
+    wrong_inverse_op: ["dp2", "dp3", "io2", "io4", "io6", "eb2", "eb5", "xb1", "xb2", "xb3"],
+    one_sided_op: ["dp1", "dp4", "io5", "io6", "eb4", "eb5", "xb1", "xb2", "xb3"],
+    arithmetic_slip: ["dp3", "dp4", "io5", "io6", "eb4", "eb5", "xb3", "clt4", "clt5"],
     combining_unlike_terms: ["clt3", "clt4", "clt5"]
 };
 

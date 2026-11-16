@@ -132,3 +132,116 @@ test("a round ends after ten questions without a cure", async (t) => {
   assert.equal(result.targetedPractice.targetErrors, 5);
   assert.deepEqual((await studySessionService.getStudentProfile(studentId)).curedMistakes, []);
 });
+
+// ------------------------------------------------------------
+// Surprise check-ups on cured mistakes
+// ------------------------------------------------------------
+
+async function cure(studentId) {
+  let questionId = (await startRound(studentId)).question.id;
+  let result;
+  for (let i = 0; i < 5; i++) {
+    result = await answer(studentId, questionId, null);
+    questionId = result.nextQuestion.id;
+  }
+  assert.equal(result.targetedPractice.cured, true);
+  return result;
+}
+
+// Make the next pending check-up due now, as if the days had passed.
+function makeDue(records, studentId) {
+  const item = records.get(studentId).curedMistakes[0];
+  const next = item.checkups.find((c) => !c.result);
+  next.dueAt = new Date(Date.now() - 1000).toISOString();
+  return next;
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+test("a cure schedules surprise check-ups after 2 and 7 days", async (t) => {
+  const { records } = setUp(t);
+  const before = Date.now();
+  const result = await cure("checkup-student-1");
+  const item = records.get("checkup-student-1").curedMistakes[0];
+
+  assert.deepEqual(item.checkups.map((c) => c.days), [2, 7]);
+  const dueIn = item.checkups.map((c) => Math.round((Date.parse(c.dueAt) - before) / DAY));
+  assert.deepEqual(dueIn, [2, 7]);
+  // Nothing is due yet, so no check-up is served straight after the cure.
+  assert.equal(item.checkups.every((c) => c.questionId === null), true);
+  assert.equal(result.checkup, null);
+});
+
+test("a due check-up is slipped into ordinary practice and a clean answer shows it held", async (t) => {
+  const { records } = setUp(t);
+  const studentId = "checkup-student-2";
+  await cure(studentId);
+  makeDue(records, studentId);
+
+  // Starting ordinary practice in that topic serves the check-up first.
+  const session = await studySessionService.startSession({ studentId, resetToken: "token", concept: "distributive_property", difficulty: 1 });
+  assert.equal(session.targetedPractice, null, "it looks like any other question");
+  assert.match(session.question.id, /^g_dp[1-4]_/);
+  assert.equal(records.get(studentId).curedMistakes[0].checkups[0].questionId, session.question.id);
+
+  const result = await answer(studentId, session.question.id, null);
+  assert.equal(result.checkup.result, "held");
+  assert.equal(result.checkup.days, 2);
+  assert.equal(result.checkup.final, false);
+
+  const item = records.get(studentId).curedMistakes[0];
+  assert.equal(item.checkups[0].result, "held");
+  // The 7-day check-up is at least 3 days away, even though the first was late.
+  assert.ok(Date.parse(item.checkups[1].dueAt) - Date.now() >= 3 * DAY - 60_000);
+
+  const profile = await studySessionService.getStudentProfile(studentId);
+  assert.equal(profile.curedMistakes[0].status, "checking");
+});
+
+test("making the mistake at a check-up marks the cure as slipped", async (t) => {
+  const { records } = setUp(t);
+  const studentId = "checkup-student-3";
+  await cure(studentId);
+  makeDue(records, studentId);
+
+  const session = await studySessionService.startSession({ studentId, resetToken: "token", concept: "distributive_property", difficulty: 1 });
+  const result = await answer(studentId, session.question.id, "failed_to_distribute");
+  assert.equal(result.checkup.result, "slipped");
+
+  const profile = await studySessionService.getStudentProfile(studentId);
+  assert.equal(profile.curedMistakes[0].status, "slipped");
+
+  // No more check-ups for a slipped cure: the next question is ordinary.
+  makeDue(records, studentId);
+  const next = await studySessionService.startSession({ studentId, resetToken: "token", concept: "distributive_property", difficulty: 1 });
+  assert.equal(records.get(studentId).curedMistakes[0].checkups[1].questionId, null);
+  assert.ok(next.question);
+});
+
+test("an answer wrong for another reason settles nothing and the check-up comes back tomorrow", async (t) => {
+  const { records } = setUp(t);
+  const studentId = "checkup-student-4";
+  await cure(studentId);
+  makeDue(records, studentId);
+
+  const session = await studySessionService.startSession({ studentId, resetToken: "token", concept: "distributive_property", difficulty: 1 });
+  const result = await studySessionService.recordAnswer({
+    studentId, resetToken: "token", question: { id: session.question.id }, studentAnswer: "999", work: ""
+  });
+  assert.equal(result.checkup.result, "unsettled");
+  const checkup = records.get(studentId).curedMistakes[0].checkups[0];
+  assert.equal(checkup.result, null);
+  assert.equal(checkup.questionId, null);
+  assert.ok(Date.parse(checkup.dueAt) - Date.now() > DAY - 60_000);
+});
+
+test("check-ups only appear in their own topic", async (t) => {
+  const { records } = setUp(t);
+  const studentId = "checkup-student-5";
+  await cure(studentId);
+  makeDue(records, studentId);
+
+  const other = await studySessionService.startSession({ studentId, resetToken: "token", concept: "combining_like_terms", difficulty: 1 });
+  assert.equal(other.question.concept, "combining_like_terms");
+  assert.equal(records.get(studentId).curedMistakes[0].checkups[0].questionId, null);
+});

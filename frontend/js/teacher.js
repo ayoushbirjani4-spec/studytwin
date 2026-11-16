@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = "studytwin_teacher_classes";
 const API_BASE = location.protocol === "file:" ? "http://localhost:3000" : "";
 
-const state = { classes: [], current: null };
+const state = { classes: [], current: null, report: null };
 
 function loadClasses() {
   try {
@@ -82,7 +82,7 @@ function showError(message) {
 }
 
 function show(panel) {
-  for (const id of ["setupPanel", "createdPanel", "reportPanel"]) {
+  for (const id of ["setupPanel", "createdPanel", "reportPanel", "classTwinPanel"]) {
     $(id).classList.toggle("hidden", id !== panel);
   }
 }
@@ -168,8 +168,13 @@ function renderEvidence(evidence) {
       </div>`;
   }).join("");
 
+  const checkups = (cures.checkups || [])
+    .filter((c) => c.answered)
+    .map((c) => `after ${c.days} days, ${c.held} of ${c.answered} held`)
+    .join("; ");
   $("curesSummary").innerHTML = cures.total
-    ? `<strong>Trap rounds:</strong> ${plural(cures.total, "mistake")} cured. ${cures.held} stayed away for ${cures.settledAfter}+ answers since, ${cures.cameBack} came back, ${cures.tooSoon} too recent to tell.`
+    ? `<strong>Trap rounds:</strong> ${plural(cures.total, "mistake")} cured. ${cures.held} stayed away for ${cures.settledAfter}+ answers since, ${cures.cameBack} came back, ${cures.tooSoon} too recent to tell.` +
+      (checkups ? `<br><strong>Surprise check-ups:</strong> ${escapeHtml(checkups)}.` : "")
     : "";
 }
 
@@ -202,6 +207,7 @@ async function openClass(entry) {
   try {
     const report = await api(`/api/classes/${encodeURIComponent(entry.code)}/report`, { key: entry.key });
     if (report.class.name !== entry.name) rememberClass({ ...entry, name: report.class.name });
+    state.report = report;
     renderReport(report);
   } catch (error) {
     showError(error.message);
@@ -311,3 +317,146 @@ if (fromLink) {
 } else {
   show("setupPanel");
 }
+
+// ------------------------------------------------------------
+// Class twin: one twin for the whole class, on the projector
+// ------------------------------------------------------------
+//
+// The twin makes the class's most common mistakes, one lesson at a time.
+// The class votes on the wrong line, agrees the fix, then says why it was
+// wrong. It uses the same lesson and checking endpoints as a student's twin.
+
+const classTwin = { queue: [], turn: 0, lesson: null, foundIndex: null, fix: null, seen: [] };
+
+const TWIN_MISTAKES = ["failed_to_distribute", "sign_error", "wrong_inverse_op", "one_sided_op", "combining_unlike_terms", "arithmetic_slip"];
+const VERDICT_TITLES = { right: "That's it.", partly: "Nearly.", not_yet: "Not quite." };
+
+function openClassTwin() {
+  const mistakes = (state.report?.mistakes || []).filter((m) => TWIN_MISTAKES.includes(m.type));
+  classTwin.queue = mistakes.length ? mistakes : [{ type: "failed_to_distribute", label: "Failed to distribute", students: 0 }];
+  classTwin.turn = 0;
+  show("classTwinPanel");
+  loadClassTwinLesson();
+}
+
+function setClassTwinResult(text, verdict = "") {
+  $("classTwinResult").textContent = text;
+  $("classTwinResult").dataset.verdict = verdict;
+  $("classTwinResult").classList.toggle("hidden", !text);
+}
+
+async function loadClassTwinLesson() {
+  const mistake = classTwin.queue[classTwin.turn % classTwin.queue.length];
+  classTwin.lesson = null;
+  classTwin.foundIndex = null;
+  classTwin.fix = null;
+  for (const id of ["classTwinFixForm", "classTwinExplainForm", "classTwinNext"]) $(id).classList.add("hidden");
+  setClassTwinResult("");
+  $("classTwinLines").innerHTML = "";
+  $("classTwinMistake").textContent = mistake.students
+    ? `Today's twin makes your class's mistake: ${mistake.label} (${mistake.students} of ${state.report.totals.students} students)`
+    : `Today's twin makes a common mistake: ${mistake.label}`;
+
+  try {
+    const data = await api("/api/twin/lesson", {
+      method: "POST",
+      body: { misconceptionType: mistake.type, excludeQuestionIds: classTwin.seen }
+    });
+    classTwin.lesson = data.lesson;
+    classTwin.seen.push(data.lesson.questionId);
+    $("classTwinQuestion").textContent = data.lesson.question;
+    $("classTwinSays").textContent = "Here's how I solved it. Which line did I get wrong? Vote!";
+    $("classTwinLines").innerHTML = data.lesson.lines.map((line, index) => `
+      <li><button class="class-twin-line" type="button" data-index="${index}" ${index === 0 ? "disabled" : ""}>
+        <span class="class-twin-number">${index + 1}</span><code>${escapeHtml(line)}</code>
+      </button></li>
+    `).join("");
+  } catch (error) {
+    $("classTwinSays").textContent = "";
+    showError(error.message);
+  }
+}
+
+async function checkClassTwin(body) {
+  const lesson = classTwin.lesson;
+  return api("/api/twin/check", {
+    method: "POST",
+    body: { questionId: lesson.questionId, misconceptionType: lesson.misconceptionType, variant: lesson.variant, ...body }
+  });
+}
+
+$("classTwinLines").addEventListener("click", async (event) => {
+  const button = event.target.closest(".class-twin-line");
+  if (!button || button.disabled || classTwin.foundIndex !== null || !classTwin.lesson) return;
+  const index = Number(button.dataset.index);
+  try {
+    const result = await checkClassTwin({ chosenIndex: index });
+    $("classTwinSays").textContent = result.twinSays;
+    if (!result.foundMistake) {
+      button.classList.add("is-not-it");
+      button.disabled = true;
+      return;
+    }
+    classTwin.foundIndex = index;
+    button.classList.add("is-found");
+    $("classTwinFixInput").value = "";
+    $("classTwinFixForm").classList.remove("hidden");
+    $("classTwinFixInput").focus();
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+$("classTwinFixForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const correctedLine = $("classTwinFixInput").value.trim();
+  if (!correctedLine) return;
+  try {
+    const result = await checkClassTwin({ chosenIndex: classTwin.foundIndex, correctedLine });
+    $("classTwinSays").textContent = result.twinSays;
+    if (!result.fixedIt) return;
+    classTwin.fix = correctedLine;
+    const line = $("classTwinLines").querySelector(`[data-index="${classTwin.foundIndex}"]`);
+    line.insertAdjacentHTML("beforeend", `<span class="class-twin-fix">→ ${escapeHtml(correctedLine)}</span>`);
+    $("classTwinFixForm").classList.add("hidden");
+    $("classTwinExplainInput").value = "";
+    $("classTwinExplainForm").classList.remove("hidden");
+    $("classTwinNext").classList.remove("hidden");
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+$("classTwinExplainForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const explanation = $("classTwinExplainInput").value.trim();
+  if (!explanation) return;
+  const lesson = classTwin.lesson;
+  try {
+    const result = await api("/api/twin/explain", {
+      method: "POST",
+      key: state.current.key,
+      body: {
+        classCode: state.current.code, questionId: lesson.questionId, misconceptionType: lesson.misconceptionType,
+        variant: lesson.variant, correctedLine: classTwin.fix, explanation
+      }
+    });
+    setClassTwinResult(`${VERDICT_TITLES[result.verdict]} ${result.feedback}`, result.verdict);
+  } catch (error) {
+    setClassTwinResult(error.message, "error");
+  }
+});
+
+$("classTwinNext").addEventListener("click", () => {
+  classTwin.turn += 1;
+  loadClassTwinLesson();
+});
+$("classTwinButton").addEventListener("click", openClassTwin);
+$("classTwinClose").addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  show("reportPanel");
+});
+$("classTwinFullscreen").addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else $("classTwinPanel").requestFullscreen?.();
+});

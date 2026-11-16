@@ -797,28 +797,9 @@ function equationsEquivalent(
     }
 
 
-    const normalizedA = {
-        a: a.a / magnitudeA,
-        b: a.b / magnitudeA
-    };
-
-    const normalizedB = {
-        a: b.a / magnitudeB,
-        b: b.b / magnitudeB
-    };
-
-
-    return (
-        Math.abs(
-            normalizedA.a -
-            normalizedB.a
-        ) < 0.000001
-        &&
-        Math.abs(
-            normalizedA.b -
-            normalizedB.b
-        ) < 0.000001
-    );
+    // Equivalent when one is a multiple of the other, including a negative
+    // multiple (dividing -3x = -6 by -3 gives x = 2).
+    return Math.abs(a.a * b.b - a.b * b.a) / (magnitudeA * magnitudeB) < 0.000001;
 }
 
 
@@ -1925,8 +1906,12 @@ function findFirstStepError(work) {
 function buildStepDiagnosis(question, stepError, finalAnswerCorrect) {
 
     const info = STEP_LABELS[stepError.label];
-    const canonicalCorrectStep =
-        getCanonicalCorrectStep(question, stepError.from);
+    // A wrong "x = ..." line is corrected to the right "x = ...", not to a
+    // worked-solution line in another form (like "3x / 3 = 18 / 3").
+    const solvedForX = /^\s*x\s*=/i.test(String(stepError.to || ""));
+    const canonicalCorrectStep = solvedForX
+        ? null
+        : getCanonicalCorrectStep(question, stepError.from);
     const correctStep =
         canonicalCorrectStep ||
         getVerifiedAlgebraicCorrection(stepError.from);
@@ -1955,7 +1940,10 @@ function buildStepDiagnosis(question, stepError, finalAnswerCorrect) {
 }
 
 function getCanonicalCorrectStep(question, fromStep) {
-    const equationSteps = (question.solution_steps || [])
+    // The question line counts as step 0, so a slip in the first step gets
+    // the worked solution's first line, not just the final answer.
+    const start = String(question.question || "").replace(/^\s*solve\s*:\s*/i, "");
+    const equationSteps = [start, ...(question.solution_steps || [])]
         .filter(step => splitEquation(step));
 
     for (let index = 0; index < equationSteps.length - 1; index++) {
