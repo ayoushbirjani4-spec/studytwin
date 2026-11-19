@@ -974,6 +974,17 @@ function detectOperation(
 // 13. VALIDATE INDIVIDUAL WORK STEPS
 // ============================================================
 
+// A simplifying step ("8x - 5 + 3x + 2" -> "11x - 3"): true if the two
+// expressions are equal, false if not, null if either is not an expression.
+function expressionStepValid(previous, current) {
+    const before = normalizeEquation(previous);
+    const after = normalizeEquation(current);
+    if (splitEquation(before) || splitEquation(after)) return null;
+    const a = safeParse(before);
+    const b = safeParse(after);
+    return a && b ? linSame(a, b) : null;
+}
+
 function validateWorkSteps(work) {
 
     const steps =
@@ -1016,9 +1027,13 @@ function validateWorkSteps(work) {
                     const currP = parseEquation(curr);
                     let valid = false;
                     let op = "invalid_transformation";
+                    const simplified = expressionStepValid(prev, curr);
                     if (prevP && currP) {
                         valid = equationsEquivalent(prev, curr);
                         op = valid ? "valid_transformation" : "invalid_transformation";
+                    } else if (simplified !== null) {
+                        valid = simplified;
+                        op = valid ? "simplify" : "invalid_simplification";
                     }
                     if (!valid && allValid) {
                         allValid = false;
@@ -1103,6 +1118,28 @@ function validateWorkSteps(work) {
 
         const currentParsed =
             parseEquation(current);
+
+
+        // Simplifying an expression (no equals sign): equal or not.
+        const simplified = expressionStepValid(previous, current);
+        if (simplified !== null) {
+            const result = {
+                step: i + 1,
+                from: previous,
+                to: current,
+                valid: simplified,
+                operation: simplified ? "simplify" : "invalid_simplification",
+                message: simplified
+                    ? "Valid simplification."
+                    : "This step changes the value of the expression."
+            };
+            validated.push(result);
+            if (!simplified) {
+                allValid = false;
+                invalidStep = invalidStep || result;
+            }
+            continue;
+        }
 
 
         // Could not parse
@@ -1765,7 +1802,13 @@ function classifyStepError(from, to) {
             return undefined;
         }
 
-        // Expansion steps: only flag a flipped constant sign here.
+        // Multiplied one side by k and the other by 1/k
+        const kL = linRatio(L1, L2);
+        const kR = linRatio(R1, R2);
+        const invertedOneSide = kL !== null && kR !== null && !linNear(kL, 1) && linNear(kL * kR, 1);
+
+        // Expansion steps: only flag a flipped constant sign, or dividing a
+        // bracket's denominator into the other side ("(x + 2)/3 = 4" -> "x + 2 = 4/3").
         if (f.includes("(")) {
             if (
                 linNear(L2.a, L1.a) &&
@@ -1775,7 +1818,7 @@ function classifyStepError(from, to) {
             ) {
                 return "sign_error";
             }
-            return null;
+            return invertedOneSide ? "wrong_inverse_op" : null;
         }
 
         const dL = linDiff(L1, L2);
@@ -1813,16 +1856,19 @@ function classifyStepError(from, to) {
             }
         }
 
-        // Multiplied one side by k and the other by 1/k
-        const kL = linRatio(L1, L2);
-        const kR = linRatio(R1, R2);
-
-        if (
-            kL !== null && kR !== null &&
-            !linNear(kL, 1) &&
-            linNear(kL * kR, 1)
-        ) {
+        if (invertedOneSide) {
             return "wrong_inverse_op";
+        }
+
+        // Right size, wrong sign: "-3x = 12" -> "x = 4" lost the minus.
+        const before = parseEquation(f);
+        const after = parseEquation(t);
+        if (before && after && !linNear(before.a, 0) && !linNear(after.a, 0)) {
+            const xBefore = -before.b / before.a;
+            const xAfter = -after.b / after.a;
+            if (!linNear(xBefore, 0) && linNear(xAfter, -xBefore)) {
+                return "sign_error";
+            }
         }
 
         return "arithmetic_slip";
@@ -2345,8 +2391,9 @@ async function detectMisconception(
 
         // Every written step was checked and is algebraically equivalent
         // to the one before it, so there is nothing left for the LLM to find.
+        // A single line has no step to check, so it still goes to the LLM.
         const workFullyVerified =
-            validation.available && validation.valid && validation.steps.length > 1;
+            validation.available && validation.valid && validation.steps.some(step => step.from);
 
         const llmDiagnosis = workFullyVerified
             ? null

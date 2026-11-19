@@ -91,8 +91,52 @@ function teacherKeyMatches(classRecord, key) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+// ------------------------------------------------------------
+// Class twin polls: the class votes from their phones on which line
+// the twin got wrong. One poll per class at a time, kept on the class
+// record so every serverless instance sees the same votes.
+// ------------------------------------------------------------
+
+// poll: { id, questionId, misconceptionType, variant, open, votes: { voterId: lineIndex } }
+async function setPoll(code, poll) {
+  const clean = normaliseCode(code);
+  if (useMemoryStore()) {
+    const found = memoryClasses.get(clean);
+    if (found) found.poll = structuredClone(poll);
+    return;
+  }
+  await (await getCollection()).updateOne({ _id: clean }, { $set: { poll } });
+}
+
+async function closePoll(code, pollId) {
+  const clean = normaliseCode(code);
+  if (useMemoryStore()) {
+    const poll = memoryClasses.get(clean)?.poll;
+    if (poll?.id === pollId) poll.open = false;
+    return;
+  }
+  await (await getCollection()).updateOne({ _id: clean, "poll.id": pollId }, { $set: { "poll.open": false } });
+}
+
+// One vote per voter (they can change it) while the poll is open.
+// Returns false if the poll has moved on or closed.
+async function vote(code, pollId, voterId, lineIndex) {
+  const clean = normaliseCode(code);
+  if (useMemoryStore()) {
+    const poll = memoryClasses.get(clean)?.poll;
+    if (!poll || poll.id !== pollId || !poll.open) return false;
+    poll.votes[voterId] = lineIndex;
+    return true;
+  }
+  const result = await (await getCollection()).updateOne(
+    { _id: clean, "poll.id": pollId, "poll.open": true },
+    { $set: { [`poll.votes.${voterId}`]: lineIndex } }
+  );
+  return result.matchedCount > 0;
+}
+
 function clearMemoryClasses() {
   memoryClasses.clear();
 }
 
-module.exports = { create, get, normaliseCode, teacherKeyMatches, clearMemoryClasses };
+module.exports = { create, get, normaliseCode, teacherKeyMatches, setPoll, closePoll, vote, clearMemoryClasses };

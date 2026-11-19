@@ -60,6 +60,13 @@ const explainRateLimiter = createAnswerRateLimiter({
     perDay: 100
 });
 
+// A whole class votes and polls from one school network (often one IP
+// address), every few seconds, so class voting gets a much larger budget.
+const classroomRateLimiter = createAnswerRateLimiter({
+    perMinute: 3000,
+    perDay: 100000
+});
+
 // Creating classes needs no account, so it is kept to a trickle.
 const classCreateRateLimiter = createAnswerRateLimiter({
     perMinute: 3,
@@ -1382,6 +1389,123 @@ app.get("/api/classes/:code/export.csv", stepCheckRateLimiter, async (req, res) 
         res.send(classReportService.toCsv(rows));
     } catch (error) {
         sendServiceError(res, error, "Unable to export the class.");
+    }
+});
+
+
+// ============================================================
+// CLASS TWIN VOTING FROM PHONES
+// ============================================================
+//
+// POST /api/classes/:code/poll          teacher: open a vote on a twin lesson
+// POST /api/classes/:code/poll/close    teacher: close it
+// GET  /api/classes/:code/poll/results  teacher: votes per line
+// GET  /api/classes/:code/poll          students: the lines to vote on
+// POST /api/classes/:code/poll/vote     students: { pollId, voterId, line }
+//
+// Students need only the class code, no name or account. Votes are
+// anonymous counts; the answer is never sent to the phones.
+//
+// ============================================================
+
+const VOTER_ID = /^[A-Za-z0-9_-]{8,40}$/;
+
+function pollLesson(poll) {
+    if (!poll) return null;
+    const question = questionService.findQuestionById(poll.questionId);
+    return twinService.buildTwinSolution(question, poll.misconceptionType, poll.variant);
+}
+
+app.post("/api/classes/:code/poll", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const { questionId, misconceptionType, variant = 0 } = req.body || {};
+        const poll = {
+            id: require("node:crypto").randomUUID().slice(0, 8),
+            questionId: String(questionId || ""),
+            misconceptionType: String(misconceptionType || ""),
+            variant: Number.isInteger(variant) && variant >= 0 && variant < 10 ? variant : 0,
+            open: true,
+            votes: {}
+        };
+        if (!pollLesson(poll)) {
+            return res.status(404).json({ success: false, error: "That twin lesson was not found." });
+        }
+        await classStore.setPoll(classRecord.code, poll);
+        res.json({ success: true, pollId: poll.id });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to start the vote.");
+    }
+});
+
+app.post("/api/classes/:code/poll/close", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        await classStore.closePoll(classRecord.code, String(req.body?.pollId || ""));
+        res.json({ success: true });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to close the vote.");
+    }
+});
+
+app.get("/api/classes/:code/poll/results", classroomRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const poll = classRecord.poll;
+        const lesson = pollLesson(poll);
+        const counts = lesson ? lesson.lines.map(() => 0) : [];
+        for (const line of Object.values(poll?.votes || {})) {
+            if (counts[line] !== undefined) counts[line] += 1;
+        }
+        res.json({ success: true, pollId: poll?.id || null, open: Boolean(poll?.open), counts, voters: Object.keys(poll?.votes || {}).length });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to load the votes.");
+    }
+});
+
+app.get("/api/classes/:code/poll", classroomRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await classStore.get(req.params.code);
+        if (!classRecord) {
+            return res.status(404).json({ success: false, error: "No class has that code. Check it with your teacher." });
+        }
+        const poll = classRecord.poll;
+        const lesson = poll?.open ? pollLesson(poll) : null;
+        res.json({
+            success: true,
+            className: classRecord.name,
+            pollId: lesson ? poll.id : null,
+            open: Boolean(lesson),
+            question: lesson ? questionService.findQuestionById(poll.questionId).question : null,
+            lines: lesson ? lesson.lines : []
+        });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to load the vote.");
+    }
+});
+
+app.post("/api/classes/:code/poll/vote", classroomRateLimiter, async (req, res) => {
+    const { pollId, voterId, line } = req.body || {};
+    if (typeof pollId !== "string" || typeof voterId !== "string" || !VOTER_ID.test(voterId) || !Number.isInteger(line)) {
+        return res.status(400).json({ success: false, error: "Tap a line to vote." });
+    }
+    try {
+        const classRecord = await classStore.get(req.params.code);
+        const lesson = classRecord?.poll?.id === pollId ? pollLesson(classRecord.poll) : null;
+        // Line 0 is the question itself, so it can't be the twin's mistake.
+        if (!lesson || line < 1 || line >= lesson.lines.length) {
+            return res.status(409).json({ success: false, error: "This vote has finished." });
+        }
+        const counted = await classStore.vote(classRecord.code, pollId, voterId, line);
+        if (!counted) {
+            return res.status(409).json({ success: false, error: "This vote has finished." });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to record your vote.");
     }
 });
 

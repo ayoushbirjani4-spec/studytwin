@@ -109,6 +109,28 @@ function parseQuestion(question) {
         };
     }
 
+    // x/d ± b = c
+    if ((m = text.match(new RegExp(`^x/(\\d+)([+-])(\\d+)=${NUMBER}$`)))) {
+        return {
+            kind: "fraction",
+            start: question.question.replace(/^\s*solve\s*:\s*/i, "").trim(),
+            d: Number(m[1]),
+            b: (m[2] === "-" ? -1 : 1) * Number(m[3]),
+            c: Number(m[4])
+        };
+    }
+
+    // (x ± b)/d = c
+    if ((m = text.match(new RegExp(`^\\(x([+-])(\\d+)\\)/(\\d+)=${NUMBER}$`)))) {
+        return {
+            kind: "bracketFraction",
+            start: question.question.replace(/^\s*solve\s*:\s*/i, "").trim(),
+            b: (m[1] === "-" ? -1 : 1) * Number(m[2]),
+            d: Number(m[3]),
+            c: Number(m[4])
+        };
+    }
+
     // ax ± b = cx ± d (x on both sides)
     if ((m = text.match(/^(\d*)x(?:([+-])(\d+))?=(\d*)x([+-])(\d+)$/))) {
         return {
@@ -277,6 +299,13 @@ function linearVariants(prefix, a, b, c, type) {
             variants.push({ lines, wrongIndex, stage: "divide" });
         }
 
+        if (type === "sign_error" && (a < 0 || rhs < 0)) {
+            // Sets up the division right, then gets the sign of the answer wrong.
+            const lines = [...isolated, equation("x", `${formatNumber(rhs)}/${formatNumber(a)}`)];
+            lines.push(equation("x", formatNumber(-rhs / a, -rhs, a)));
+            variants.push({ lines, wrongIndex: lines.length - 1, stage: "evaluate" });
+        }
+
         if (type === "arithmetic_slip") {
             // Divides correctly, then gets the final value wrong.
             const lines = [...isolated, equation("x", `${formatNumber(rhs)}/${formatNumber(a)}`)];
@@ -307,6 +336,39 @@ function bothSidesVariants(q, type) {
         return variants.concat(linearVariants([q.start, equation(formatLinear(left, q.b), formatNumber(q.d))], left, q.b, q.d, type));
     }
     return linearVariants([q.start, equation(formatLinear(left, q.b), formatNumber(q.d))], left, q.b, q.d, type);
+}
+
+// x/d + b = c: slip while removing b, or while undoing the division.
+function fractionVariants(q, type) {
+    const y = q.c - q.b;
+    const op = q.b > 0 ? "-" : "+";
+    const variants = [];
+    if (type === "wrong_inverse_op" || type === "one_sided_op") {
+        const wrongRhs = type === "wrong_inverse_op" ? q.c + q.b : q.c;
+        const lines = [q.start, equation(`x/${q.d}`, formatNumber(wrongRhs)), equation("x", formatNumber(wrongRhs * q.d))];
+        variants.push({ lines, wrongIndex: 1, stage: "isolate" });
+    }
+    const isolated = [q.start, equation(`x/${q.d}`, `${formatNumber(q.c)} ${op} ${formatNumber(Math.abs(q.b))}`), equation(`x/${q.d}`, formatNumber(y))];
+    if (type === "wrong_inverse_op") {
+        // Divides by d instead of multiplying.
+        variants.push({ lines: [...isolated, equation("x", `${formatNumber(y)}/${q.d}`)], wrongIndex: 3, stage: "divide" });
+    }
+    if (type === "arithmetic_slip") {
+        variants.push({ lines: [...isolated, equation("x", `${formatNumber(y)} * ${q.d}`), equation("x", formatNumber(y * q.d + 1))], wrongIndex: 4, stage: "evaluate" });
+    }
+    return variants;
+}
+
+// (x + b)/d = c: slip while clearing the fraction, then finish as x + b = c·d.
+function bracketFractionVariants(q, type) {
+    const cleared = q.c * q.d;
+    const variants = [];
+    if (type === "wrong_inverse_op" || type === "one_sided_op") {
+        // Divides the other side instead of multiplying, or drops the /d on one side only.
+        const rhs = type === "wrong_inverse_op" ? `${formatNumber(q.c)}/${q.d}` : formatNumber(q.c);
+        variants.push({ lines: [q.start, equation(formatLinear(1, q.b), rhs)], wrongIndex: 1, stage: "divide" });
+    }
+    return variants.concat(linearVariants([q.start, equation(formatLinear(1, q.b), formatNumber(cleared))], 1, q.b, cleared, type));
 }
 
 function divideVariants(q, type) {
@@ -355,6 +417,8 @@ function simplifyVariants(q, type) {
 const VARIANT_BUILDERS = {
     bracket: bracketVariants,
     both: bothSidesVariants,
+    fraction: fractionVariants,
+    bracketFraction: bracketFractionVariants,
     divide: divideVariants,
     linear: (q, type) => linearVariants([q.start], q.a, q.b, q.c, type),
     simplify: simplifyVariants

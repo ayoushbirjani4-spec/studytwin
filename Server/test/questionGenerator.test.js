@@ -205,3 +205,44 @@ test("the twin has lessons for x on both sides", () => {
   const lesson = twinService.findTwinLesson({ misconceptionType: "one_sided_op", concept: "x_on_both_sides" });
   assert.equal(lesson.concept ?? questionService.findQuestionById(lesson.questionId).concept, "x_on_both_sides");
 });
+
+test("negative numbers: losing the minus when dividing is a sign error", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  // -4x = 20, so x = -5
+  const lost = await misconceptionService.analyzeAnswer({ questionId: "ng_002", studentAnswer: "5", work: "-4x = 20\nx = 20/4\nx = 5" });
+  assert.equal(lost.misconception.type, "sign_error");
+  // -2x + 7 = 15 -> -2x = 8 -> x = 4 (should be -4)
+  const later = await misconceptionService.analyzeAnswer({ questionId: "ng_005", studentAnswer: "4", work: "-2x + 7 = 15\n-2x = 8\nx = 4" });
+  assert.equal(later.misconception.type, "sign_error");
+
+  const lesson = twinService.findTwinLesson({ misconceptionType: "sign_error", concept: "negative_numbers" });
+  assert.equal(questionService.findQuestionById(lesson.questionId).concept, "negative_numbers");
+});
+
+test("fractions: dividing the other side instead of multiplying is a wrong inverse operation", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  const bracket = await misconceptionService.analyzeAnswer({ questionId: "fr_004", studentAnswer: "-2/3", work: "(x + 2)/3 = 4\nx + 2 = 4/3\nx = -2/3" });
+  assert.equal(bracket.misconception.type, "wrong_inverse_op");
+  const plain = await misconceptionService.analyzeAnswer({ questionId: "fr_002", studentAnswer: "4/3", work: "x/3 + 2 = 6\nx/3 = 4\nx = 4/3" });
+  assert.equal(plain.misconception.type, "wrong_inverse_op");
+
+  for (const id of ["fr_002", "fr_004"]) {
+    assert.ok(twinService.listTwinVariants(questionService.findQuestionById(id), "wrong_inverse_op").length, id);
+  }
+});
+
+test("a correct simplify answer with checked working is settled by the rules, without Gemini", async (t) => {
+  let calls = 0;
+  t.mock.method(llmReviewService, "reviewSubmission", async () => { calls++; return null; });
+  for (const work of ["8x - 5 + 3x + 2\n11x - 3", "8x - 5 + 3x + 2 -> 8x + 3x - 5 + 2 -> 11x - 3"]) {
+    const result = await misconceptionService.analyzeAnswer({ questionId: "clt_004", studentAnswer: "11x - 3", work });
+    assert.equal(result.correct, true);
+    assert.equal(result.misconception.detected, false);
+  }
+  assert.equal(calls, 0);
+
+  // A wrong middle line is still found, by the rules.
+  const flawed = await misconceptionService.analyzeAnswer({ questionId: "clt_004", studentAnswer: "11x - 3", work: "8x - 5 + 3x + 2\n11x + 7\n11x - 3" });
+  assert.equal(flawed.misconception.detected, true);
+  assert.equal(calls, 0);
+});

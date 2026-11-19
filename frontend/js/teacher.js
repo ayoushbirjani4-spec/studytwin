@@ -326,7 +326,7 @@ if (fromLink) {
 // The class votes on the wrong line, agrees the fix, then says why it was
 // wrong. It uses the same lesson and checking endpoints as a student's twin.
 
-const classTwin = { queue: [], turn: 0, lesson: null, foundIndex: null, fix: null, seen: [] };
+const classTwin = { queue: [], turn: 0, lesson: null, foundIndex: null, fix: null, seen: [], pollId: null, pollTimer: null };
 
 const TWIN_MISTAKES = ["failed_to_distribute", "sign_error", "wrong_inverse_op", "one_sided_op", "combining_unlike_terms", "arithmetic_slip"];
 const VERDICT_TITLES = { right: "That's it.", partly: "Nearly.", not_yet: "Not quite." };
@@ -364,11 +364,13 @@ async function loadClassTwinLesson() {
     });
     classTwin.lesson = data.lesson;
     classTwin.seen.push(data.lesson.questionId);
+    startVote(data.lesson);
     $("classTwinQuestion").textContent = data.lesson.question;
     $("classTwinSays").textContent = "Here's how I solved it. Which line did I get wrong? Vote!";
     $("classTwinLines").innerHTML = data.lesson.lines.map((line, index) => `
       <li><button class="class-twin-line" type="button" data-index="${index}" ${index === 0 ? "disabled" : ""}>
         <span class="class-twin-number">${index + 1}</span><code>${escapeHtml(line)}</code>
+        <span class="class-twin-votes" aria-live="polite"></span>
       </button></li>
     `).join("");
   } catch (error) {
@@ -399,6 +401,13 @@ $("classTwinLines").addEventListener("click", async (event) => {
     }
     classTwin.foundIndex = index;
     button.classList.add("is-found");
+    stopVote();
+    // Who got it right: the share of phones that voted for the real mistake.
+    const votes = classTwin.lastVotes;
+    if (votes?.voters) {
+      const right = votes.counts[index] || 0;
+      $("classTwinVoters").textContent = `${right} of ${votes.voters} spotted it (${Math.round((right / votes.voters) * 100)}%)`;
+    }
     $("classTwinFixInput").value = "";
     $("classTwinFixForm").classList.remove("hidden");
     $("classTwinFixInput").focus();
@@ -453,6 +462,7 @@ $("classTwinNext").addEventListener("click", () => {
 });
 $("classTwinButton").addEventListener("click", openClassTwin);
 $("classTwinClose").addEventListener("click", () => {
+  stopVote();
   if (document.fullscreenElement) document.exitFullscreen();
   show("reportPanel");
 });
@@ -460,3 +470,71 @@ $("classTwinFullscreen").addEventListener("click", () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else $("classTwinPanel").requestFullscreen?.();
 });
+
+// ------------------------------------------------------------
+// Phone voting for the class twin
+// ------------------------------------------------------------
+//
+// Each lesson opens a vote. Students open /vote.html?class=CODE, tap the
+// line they think is wrong, and the counts show live beside each line.
+// The vote closes when the teacher clicks the line the class chose.
+
+const VOTE_REFRESH_MS = 2000;
+
+async function startVote(lesson) {
+  stopVote();
+  $("classTwinVoteLink").textContent = `${location.origin}/vote.html?class=${state.current.code}`;
+  $("classTwinVoteCode").textContent = state.current.code;
+  $("classTwinVoters").textContent = "0 votes";
+  try {
+    const data = await api(`/api/classes/${encodeURIComponent(state.current.code)}/poll`, {
+      method: "POST",
+      key: state.current.key,
+      body: { questionId: lesson.questionId, misconceptionType: lesson.misconceptionType, variant: lesson.variant }
+    });
+    classTwin.pollId = data.pollId;
+    classTwin.lastVotes = null;
+    $("classTwinVote").classList.remove("hidden");
+    refreshVotes();
+  } catch (error) {
+    // Voting is extra: the class can still vote by hands.
+    $("classTwinVote").classList.add("hidden");
+  }
+}
+
+async function refreshVotes() {
+  if (!classTwin.pollId) return;
+  try {
+    const data = await api(`/api/classes/${encodeURIComponent(state.current.code)}/poll/results`, { key: state.current.key });
+    if (data.pollId !== classTwin.pollId) return;
+    showVoteCounts(data.counts, data.voters);
+  } catch {
+    // Try again on the next tick.
+  }
+  if (classTwin.pollId) classTwin.pollTimer = setTimeout(refreshVotes, VOTE_REFRESH_MS);
+}
+
+function showVoteCounts(counts, voters) {
+  classTwin.lastVotes = { counts, voters };
+  $("classTwinVoters").textContent = `${voters} vote${voters === 1 ? "" : "s"}`;
+  const top = Math.max(0, ...counts);
+  for (const button of $("classTwinLines").querySelectorAll(".class-twin-line")) {
+    const count = counts[Number(button.dataset.index)] || 0;
+    const badge = button.querySelector(".class-twin-votes");
+    badge.textContent = count ? `${count} vote${count === 1 ? "" : "s"}` : "";
+    badge.style.setProperty("--share", voters ? `${Math.round((count / voters) * 100)}%` : "0%");
+    button.classList.toggle("is-top-voted", count > 0 && count === top);
+  }
+}
+
+function stopVote() {
+  clearTimeout(classTwin.pollTimer);
+  classTwin.pollTimer = null;
+  const pollId = classTwin.pollId;
+  classTwin.pollId = null;
+  if (pollId && state.current) {
+    api(`/api/classes/${encodeURIComponent(state.current.code)}/poll/close`, {
+      method: "POST", key: state.current.key, body: { pollId }
+    }).catch(() => {});
+  }
+}

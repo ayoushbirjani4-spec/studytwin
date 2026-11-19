@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261116-7" />
+  <link rel="stylesheet" href="./css/style.css?v=20261120-1" />
 </head>
 <body>
   <div class="teacher-page">
@@ -139,6 +139,10 @@
           <button id="classTwinClose" class="ghost-button" type="button">Back to class</button>
         </div>
       </div>
+      <div id="classTwinVote" class="class-twin-vote hidden">
+        <span>Vote on your phone: <strong id="classTwinVoteLink"></strong> · code <strong id="classTwinVoteCode" class="class-twin-vote-code"></strong></span>
+        <span id="classTwinVoters" class="class-twin-voters">0 votes</span>
+      </div>
       <p id="classTwinSays" class="class-twin-says"></p>
       <h2 id="classTwinQuestion" class="class-twin-question"></h2>
       <ol id="classTwinLines" class="class-twin-lines"></ol>
@@ -155,6 +159,6 @@
     </section>
   </div>
 
-  <script src="./js/teacher.js?v=20261116-7"></script>
+  <script src="./js/teacher.js?v=20261120-1"></script>
 </body>
 </html>

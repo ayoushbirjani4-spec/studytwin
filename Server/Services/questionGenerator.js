@@ -147,6 +147,43 @@ const bothSidesTemplate = (sign) => (a, b, c, x) => {
     });
 };
 
+// Negative numbers: a·x + b = c with a negative coefficient, constant or
+// answer. Ids hold only digits, so a template negates its own numbers.
+const negativeTemplate = (a, b, x) => {
+    const c = a * x + b;
+    const lhs = b === 0 ? term(a) : linear(a, b);
+    // One-step questions show the working line too ("x = 3 - 8"), like the bank.
+    const steps = a === 1
+        ? [`Subtract ${b} from both sides`, `x = ${c} - ${b}`, `x = ${x}`]
+        : b === 0
+            ? [`Divide both sides by ${a}`, `x = ${c}/${a}`, `x = ${x}`]
+            : solveLinearSteps(a, b, c);
+    return equationQuestion({
+        concept: "negative_numbers",
+        text: `${lhs} = ${c}`,
+        x,
+        steps,
+        explanation: "Keep track of every minus sign: dividing by a negative number changes the sign of the answer."
+    });
+};
+
+// Equations with fractions: x/d ± b = c, and (x ± b)/d = c.
+const fractionTemplate = (d, b, y) => equationQuestion({
+    concept: "equations_with_fractions",
+    text: `x/${d} + ${b} = ${y + b}`,
+    x: d * y,
+    steps: [`Subtract ${b} from both sides`, `x/${d} = ${y}`, `Multiply both sides by ${d}`, `x = ${d * y}`],
+    explanation: `Undo the + ${b} first, then undo dividing by ${d} by multiplying both sides by ${d}.`
+});
+
+const bracketFractionTemplate = (b, d, c) => equationQuestion({
+    concept: "equations_with_fractions",
+    text: `(x + ${b})/${d} = ${c}`,
+    x: c * d - b,
+    steps: [`Multiply both sides by ${d}`, `x + ${b} = ${c * d}`, `Subtract ${b} from both sides`, `x = ${c * d - b}`],
+    explanation: `The whole of x + ${b} is divided by ${d}, so multiply both sides by ${d} first.`
+});
+
 function simplifyQuestion(terms, xTotal, constantTotal) {
     const text = terms
         .map((t, i) => (i === 0 ? t : t.startsWith("-") ? `- ${t.slice(1)}` : `+ ${t}`))
@@ -208,6 +245,23 @@ const TEMPLATES = {
     xb3: { concept: "x_on_both_sides", difficulty: 3, params: [[3, 9], [1, 9], [1, 7], [1, 9]],
         valid: (a, b, c, x) => a - c >= 2 && (a - c) * x > b,
         build: bothSidesTemplate(-1) },
+
+    // Negative numbers
+    ng1: { concept: "negative_numbers", difficulty: 1, params: [[2, 12], [1, 9]],   // x + b = c, x = -m
+        build: (b, m) => negativeTemplate(1, b, -m) },
+    ng2: { concept: "negative_numbers", difficulty: 2, params: [[2, 9], [1, 9]],    // -a·x = c, x = m
+        build: (a, m) => negativeTemplate(-a, 0, m) },
+    ng3: { concept: "negative_numbers", difficulty: 2, params: [[2, 6], [1, 12], [1, 9]],   // a·x + b = c, x = -m
+        build: (a, b, m) => negativeTemplate(a, b, -m) },
+    ng4: { concept: "negative_numbers", difficulty: 3, params: [[2, 6], [1, 12], [1, 9]],   // -a·x + b = c, x = m
+        build: (a, b, m) => negativeTemplate(-a, b, m) },
+
+    // Equations with fractions
+    fr1: { concept: "equations_with_fractions", difficulty: 1, params: [[2, 9], [2, 9]], build: divideTemplate("equations_with_fractions") },
+    fr2: { concept: "equations_with_fractions", difficulty: 2, params: [[2, 9], [1, 9], [1, 9]], build: fractionTemplate },
+    fr3: { concept: "equations_with_fractions", difficulty: 3, params: [[1, 9], [2, 6], [2, 9]],
+        valid: (b, d, c) => c * d > b,
+        build: bracketFractionTemplate },
 
     // Combining like terms
     clt1: { concept: "combining_like_terms", difficulty: 1, params: [[2, 9], [2, 9]],
@@ -338,10 +392,10 @@ function generateQuestionSet({ perTemplate = 4, seed = "studytwin" } = {}) {
 
 const TRAPS = {
     failed_to_distribute: ["dp1", "dp4", "dp3", "dp2"],
-    sign_error: ["dp2", "dp3", "clt2", "clt4", "clt5"],
-    wrong_inverse_op: ["dp2", "dp3", "io2", "io4", "io6", "eb2", "eb5", "xb1", "xb2", "xb3"],
-    one_sided_op: ["dp1", "dp4", "io5", "io6", "eb4", "eb5", "xb1", "xb2", "xb3"],
-    arithmetic_slip: ["dp3", "dp4", "io5", "io6", "eb4", "eb5", "xb3", "clt4", "clt5"],
+    sign_error: ["dp2", "dp3", "ng2", "ng3", "ng4", "clt2", "clt4", "clt5"],
+    wrong_inverse_op: ["dp2", "dp3", "io2", "io4", "io6", "eb2", "eb5", "xb1", "xb2", "xb3", "ng1", "ng3", "fr1", "fr2", "fr3"],
+    one_sided_op: ["dp1", "dp4", "io5", "io6", "eb4", "eb5", "xb1", "xb2", "xb3", "ng3", "ng4", "fr2"],
+    arithmetic_slip: ["dp3", "dp4", "io5", "io6", "eb4", "eb5", "xb3", "ng2", "ng3", "ng4", "fr1", "fr2", "clt4", "clt5"],
     combining_unlike_terms: ["clt3", "clt4", "clt5"]
 };
 

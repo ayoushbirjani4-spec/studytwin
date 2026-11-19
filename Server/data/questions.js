@@ -464,6 +464,68 @@ const questions = [
         answer: "4",
         solution_steps: ["Subtract 4x from both sides", "5x - 5 = 15", "Add 5 to both sides", "5x = 20", "Divide both sides by 5", "x = 4"],
         explanation: "Whatever you do to one side, do to the other: subtract 4x from both sides, then add 5."
+    },
+
+
+    // ========================================================
+    // NEGATIVE NUMBERS
+    // ========================================================
+
+    {
+        id: "ng_001", question: "Solve: x + 8 = 3", concept: "negative_numbers", difficulty: 1, answer: "-5",
+        solution_steps: ["Subtract 8 from both sides", "x = 3 - 8", "x = -5"],
+        explanation: "3 - 8 goes below zero: the answer is negative."
+    },
+    {
+        id: "ng_002", question: "Solve: -4x = 20", concept: "negative_numbers", difficulty: 2, answer: "-5",
+        solution_steps: ["Divide both sides by -4", "x = 20/-4", "x = -5"],
+        explanation: "A positive divided by a negative is negative."
+    },
+    {
+        id: "ng_003", question: "Solve: -3x = -15", concept: "negative_numbers", difficulty: 2, answer: "5",
+        solution_steps: ["Divide both sides by -3", "x = -15/-3", "x = 5"],
+        explanation: "A negative divided by a negative is positive."
+    },
+    {
+        id: "ng_004", question: "Solve: 3x + 10 = 1", concept: "negative_numbers", difficulty: 3, answer: "-3",
+        solution_steps: ["Subtract 10 from both sides", "3x = -9", "Divide both sides by 3", "x = -3"],
+        explanation: "1 - 10 = -9, then divide by 3."
+    },
+    {
+        id: "ng_005", question: "Solve: -2x + 7 = 15", concept: "negative_numbers", difficulty: 3, answer: "-4",
+        solution_steps: ["Subtract 7 from both sides", "-2x = 8", "Divide both sides by -2", "x = -4"],
+        explanation: "Subtract 7, then divide by -2: the minus sign changes the sign of the answer."
+    },
+
+
+    // ========================================================
+    // EQUATIONS WITH FRACTIONS
+    // ========================================================
+
+    {
+        id: "fr_001", question: "Solve: x / 4 = 5", concept: "equations_with_fractions", difficulty: 1, answer: "20",
+        solution_steps: ["Multiply both sides by 4", "x = 5 × 4", "x = 20"],
+        explanation: "x / 4 means x divided by 4, so multiply both sides by 4."
+    },
+    {
+        id: "fr_002", question: "Solve: x/3 + 2 = 6", concept: "equations_with_fractions", difficulty: 2, answer: "12",
+        solution_steps: ["Subtract 2 from both sides", "x/3 = 4", "Multiply both sides by 3", "x = 12"],
+        explanation: "Undo the + 2 first, then multiply by 3."
+    },
+    {
+        id: "fr_003", question: "Solve: x/5 + 4 = 7", concept: "equations_with_fractions", difficulty: 2, answer: "15",
+        solution_steps: ["Subtract 4 from both sides", "x/5 = 3", "Multiply both sides by 5", "x = 15"],
+        explanation: "Undo the + 4 first, then multiply by 5."
+    },
+    {
+        id: "fr_004", question: "Solve: (x + 2)/3 = 4", concept: "equations_with_fractions", difficulty: 3, answer: "10",
+        solution_steps: ["Multiply both sides by 3", "x + 2 = 12", "Subtract 2 from both sides", "x = 10"],
+        explanation: "All of x + 2 is divided by 3, so multiply both sides by 3 first."
+    },
+    {
+        id: "fr_005", question: "Solve: (x + 5)/2 = 6", concept: "equations_with_fractions", difficulty: 3, answer: "7",
+        solution_steps: ["Multiply both sides by 2", "x + 5 = 12", "Subtract 5 from both sides", "x = 7"],
+        explanation: "Multiply both sides by 2 to clear the fraction, then subtract 5."
     }
 
 ];
