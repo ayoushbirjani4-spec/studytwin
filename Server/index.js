@@ -33,6 +33,7 @@ const attemptLogStore = require("./Services/attemptLogStore");
 const llmReviewService = require("./Services/llmReviewService");
 const classStore = require("./Services/classStore");
 const classReportService = require("./Services/classReportService");
+const customQuestions = require("./Services/customQuestions");
 const { createAnswerRateLimiter } = require("./middleware/rateLimit");
 const { serviceStatus } = require("./middleware/serviceErrors");
 
@@ -1412,7 +1413,8 @@ app.post("/api/classes/:code/assignments", stepCheckRateLimiter, async (req, res
         const { concept, count, dueDate } = req.body || {};
         const due = /^\d{4}-\d{2}-\d{2}$/.test(String(dueDate)) ? new Date(`${dueDate}T00:00:00Z`) : null;
         const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z");
-        if (!questionService.getConcepts().includes(concept)) {
+        const classQuestionsTopic = concept === customQuestions.CONCEPT && (classRecord.questions || []).length > 0;
+        if (!questionService.getConcepts().includes(concept) && !classQuestionsTopic) {
             return res.status(400).json({ success: false, error: "Choose a topic for the homework." });
         }
         if (!Number.isInteger(count) || count < 1 || count > 50) {
@@ -1444,6 +1446,54 @@ app.delete("/api/classes/:code/assignments/:id", stepCheckRateLimiter, async (re
         res.json({ success: true });
     } catch (error) {
         sendServiceError(res, error, "Unable to remove the homework.");
+    }
+});
+
+
+// ============================================================
+// THE TEACHER'S OWN QUESTIONS
+// ============================================================
+//
+// POST   /api/classes/:code/questions        teacher: { text } one question per line
+// DELETE /api/classes/:code/questions/:id    teacher
+//
+// Each line is checked: StudyTwin must be able to work out its answer and
+// check working for it. Lines it can't are sent back with the reason.
+//
+// ============================================================
+
+app.post("/api/classes/:code/questions", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const text = String(req.body?.text || "").slice(0, 6000);
+        const rows = customQuestions.fromLines(text);
+        if (!rows.length) {
+            return res.status(400).json({ success: false, error: "Type at least one question." });
+        }
+        const existing = classRecord.questions || [];
+        const accepted = rows.filter((row) => row.id && !existing.includes(row.id));
+        const room = classStore.MAX_QUESTIONS - existing.length;
+        await classStore.setQuestions(classRecord.code, [...existing, ...accepted.slice(0, Math.max(0, room)).map((row) => row.id)]);
+        res.json({
+            success: true,
+            added: accepted.slice(0, Math.max(0, room)).map(({ id, question, answer }) => ({ id, question, answer })),
+            refused: rows.filter((row) => row.error).map(({ line, error }) => ({ line, error })),
+            full: accepted.length > room
+        });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to add the questions.");
+    }
+});
+
+app.delete("/api/classes/:code/questions/:id", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        await classStore.setQuestions(classRecord.code, (classRecord.questions || []).filter((id) => id !== req.params.id));
+        res.json({ success: true });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to remove the question.");
     }
 });
 

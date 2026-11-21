@@ -56,6 +56,7 @@ const difficultyName = (value) =>
 
 // Sentence case: "distributive_property" -> "Distributive property"
 const conceptName = (value) => {
+  if (value === "class_questions") return "Your teacher's questions";
   const text = String(value || "").replace(/_/g, " ").trim();
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
@@ -1195,6 +1196,10 @@ function renderCuredMistakes(cured) {
 // Ordinary practice in one topic (a due check-up is served first).
 async function practiceTopic(concept) {
   if (!concept) return;
+  // The teacher's own questions aren't in the topic list, so add them when needed.
+  if (![...$("conceptSelect").options].some((option) => option.value === concept)) {
+    $("conceptSelect").add(new Option(conceptName(concept), concept));
+  }
   $("conceptSelect").value = concept;
   state.concept = concept;
   $("dashboardPanel").classList.add("hidden");
@@ -1937,7 +1942,7 @@ function renderStudentHomework(homework) {
       : `<span class="${a.dueDate < today ? "is-overdue" : ""}">${a.done} of ${a.count} done · ${a.dueDate < today ? "was due" : "due"} ${escapeHtml(due)}</span>`;
     return `
       <div class="homework-item">
-        <div><strong>${a.count} questions on ${escapeHtml(conceptName(a.concept).toLowerCase())}</strong>${status}</div>
+        <div><strong>${a.concept === "class_questions" ? `${a.count} of your teacher's questions` : `${a.count} questions on ${escapeHtml(conceptName(a.concept).toLowerCase())}`}</strong>${status}</div>
         ${a.finished ? "" : `<button class="ghost-button homework-start" type="button" data-concept="${escapeHtml(a.concept)}">${a.done ? "Carry on" : "Start"}</button>`}
       </div>`;
   }).join("");

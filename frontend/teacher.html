@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261121-5" />
+  <link rel="stylesheet" href="./css/style.css?v=20261122-3" />
 </head>
 <body>
   <div class="teacher-page">
@@ -103,6 +103,19 @@
         <p class="muted">Once students join and answer a few questions, this page shows who is stuck and on which mistake.</p>
       </div>
 
+      <div id="questionsCard" class="profile-card">
+        <div class="card-title">Your own questions</div>
+        <p class="muted">Paste questions from your worksheet, one per line. StudyTwin works out each answer and checks students' working line by line, just like its own questions. It can check linear equations and expressions with x.</p>
+        <form id="questionsForm" class="questions-form">
+          <label class="sr-only" for="questionsInput">Questions, one per line</label>
+          <textarea id="questionsInput" rows="4" spellcheck="false" placeholder="3(x - 2) = 2x + 5&#10;x/4 + 2 = 5&#10;Simplify: 4x + 3 - x + 2"></textarea>
+          <button class="primary-button" type="submit">Add questions</button>
+        </form>
+        <div id="questionsRefused" class="questions-refused hidden" role="status"></div>
+        <ol id="questionsList" class="questions-list"></ol>
+        <button id="questionsHomeworkButton" class="ghost-button hidden" type="button">Set them all as homework, due in a week</button>
+      </div>
+
       <div id="homeworkCard" class="profile-card">
         <div class="card-title">Homework</div>
         <form id="homeworkForm" class="homework-form">
@@ -179,6 +192,6 @@
   <!-- Filled just before printing; hidden on screen. -->
   <div id="printArea" class="print-area"></div>
 
-  <script src="./js/teacher.js?v=20261121-5"></script>
+  <script src="./js/teacher.js?v=20261122-3"></script>
 </body>
 </html>

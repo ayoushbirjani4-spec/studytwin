@@ -25,6 +25,7 @@ const {
     getQuestionsByConceptAndDifficulty
 } = require("../data/questions");
 const questionGenerator = require("./questionGenerator");
+const customQuestions = require("./customQuestions");
 
 
 // ============================================================
@@ -504,6 +505,10 @@ function getQuestionById(id) {
 
     if (questionGenerator.isGeneratedId(id)) {
         return questionGenerator.parseGeneratedId(id);
+    }
+
+    if (customQuestions.isCustomId(id)) {
+        return customQuestions.fromId(id);
     }
 
     return getQuestionByIdFromData(id);

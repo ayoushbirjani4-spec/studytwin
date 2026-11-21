@@ -32,6 +32,7 @@ const attemptLogStore = require("./attemptLogStore");
 const twinService = require("./twinService");
 const questionGenerator = require("./questionGenerator");
 const classStore = require("./classStore");
+const customQuestions = require("./customQuestions");
 const { randomUUID } = require("node:crypto");
 
 
@@ -169,6 +170,19 @@ function gradeCheckup(student, questionId, misconceptionType, demonstratedCorrec
         return { ...summary, result: "unsettled" };
     }
     return null;
+}
+
+// The teacher's own questions, in the teacher's order: the one after
+// `currentId`, or when starting, the first not answered recently.
+async function nextClassQuestion(student, currentId, recentQuestionIds = []) {
+    if (!student.classCode) return null;
+    const list = (await classStore.get(student.classCode))?.questions || [];
+    if (!list.length) return null;
+    const index = list.indexOf(currentId);
+    const nextId = currentId
+        ? list[(index + 1) % list.length]
+        : list.find(id => !recentQuestionIds.includes(id)) || list[0];
+    return questionService.findQuestionById(nextId);
 }
 
 // Homework progress: answers on the assignment's topic since it was set.
@@ -776,7 +790,9 @@ async function recordAnswer({
                 });
         }
     } else {
-        nextQuestion = serveCheckup(student, realQuestion.concept, state.recentQuestionIds) ||
+        nextQuestion = realQuestion.concept === customQuestions.CONCEPT
+            ? await nextClassQuestion(student, realQuestion.id, state.recentQuestionIds)
+            : serveCheckup(student, realQuestion.concept, state.recentQuestionIds) ||
             questionService.getNextQuestion({
 
                 concept:
@@ -1130,7 +1146,9 @@ async function startSession({
     // Select first question
     // --------------------------------------------------------
 
-    const question = misconceptionType
+    const question = concept === customQuestions.CONCEPT
+        ? await nextClassQuestion(student, null, state.recentQuestionIds)
+        : misconceptionType
         ? trapQuestion(misconceptionType, concept, state.recentQuestionIds)
         : serveCheckup(student, concept, state.recentQuestionIds) || questionService.getNextQuestion({
 

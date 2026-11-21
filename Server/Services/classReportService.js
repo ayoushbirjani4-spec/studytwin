@@ -13,6 +13,7 @@ const studentStore = require("./studentStore");
 const attemptLogStore = require("./attemptLogStore");
 const twinService = require("./twinService");
 const studySessionService = require("./studySessionService");
+const customQuestions = require("./customQuestions");
 
 const RECENT_WINDOW = 10;     // "stuck" looks at a student's last 10 answers
 const STUCK_THRESHOLD = 3;    // the same mistake 3+ times in those 10
@@ -198,6 +199,11 @@ async function buildClassReport(classRecord, { now = Date.now() } = {}) {
             twinEffect: twinEffect.map((e) => ({ type: e.type, label: label(e.type), status: e.status, before: e.before, after: e.after }))
         })),
         assignments,
+        // The teacher's own questions, with the answers StudyTwin worked out.
+        questions: (classRecord.questions || [])
+            .map((id) => customQuestions.fromId(id))
+            .filter(Boolean)
+            .map(({ id, question, answer }) => ({ id, question, answer })),
         mistakes: Object.values(mistakes).sort((a, b) => b.students - a.students || b.occurrences - a.occurrences),
         evidence: {
             twinEffect: pooledTwinEffect(students),

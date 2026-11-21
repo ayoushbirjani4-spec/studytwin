@@ -199,6 +199,7 @@ function renderReport(report) {
   renderStudents(report.students);
   renderEvidence(report.evidence);
   renderHomework(report.assignments || [], report.totals.students);
+  renderQuestions(report.questions || []);
 }
 
 async function openClass(entry) {
@@ -547,6 +548,7 @@ function stopVote() {
 // ------------------------------------------------------------
 
 const topicName = (value) => {
+  if (value === "class_questions") return "Your own questions";
   const text = String(value || "").replace(/_/g, " ");
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
@@ -718,3 +720,74 @@ $("studentsTable").addEventListener("click", (event) => {
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
+
+// ------------------------------------------------------------
+// The teacher's own questions
+// ------------------------------------------------------------
+
+const CLASS_QUESTIONS = "class_questions";
+
+function renderQuestions(questions) {
+  $("questionsList").innerHTML = questions.map((q) => `
+    <li>
+      <code>${escapeHtml(q.question.replace(/^(Solve|Simplify):\s*/, ""))}</code>
+      <span class="questions-answer">${q.question.startsWith("Solve") ? "x = " : ""}${escapeHtml(q.answer)}</span>
+      <button class="text-button question-remove" type="button" data-id="${escapeHtml(q.id)}" aria-label="Remove ${escapeHtml(q.question)}">Remove</button>
+    </li>`).join("");
+  $("questionsHomeworkButton").classList.toggle("hidden", questions.length === 0);
+  $("questionsHomeworkButton").dataset.count = String(questions.length);
+
+  // Homework can be set on them like any topic.
+  const topic = [...$("homeworkTopic").options].find((option) => option.value === CLASS_QUESTIONS);
+  if (questions.length && !topic) $("homeworkTopic").add(new Option("Your own questions", CLASS_QUESTIONS));
+  if (!questions.length && topic) topic.remove();
+}
+
+$("questionsForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  showError("");
+  const text = $("questionsInput").value;
+  if (!text.trim()) return;
+  try {
+    const result = await api(`/api/classes/${encodeURIComponent(state.current.code)}/questions`, {
+      method: "POST", key: state.current.key, body: { text }
+    });
+    // Keep only the lines that couldn't be added, so they can be fixed.
+    $("questionsInput").value = result.refused.map((r) => r.line).join("\n");
+    $("questionsRefused").innerHTML = result.refused.length
+      ? `<p>${result.refused.length === 1 ? "This line wasn't" : "These lines weren't"} added:</p><ul>${result.refused.map((r) =>
+          `<li><code>${escapeHtml(r.line)}</code>: ${escapeHtml(r.error)}</li>`).join("")}</ul>`
+      : "";
+    $("questionsRefused").classList.toggle("hidden", !result.refused.length);
+    if (result.full) showError("A class can have up to 50 questions. Remove some to add more.");
+    openClass(state.current);
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+$("questionsList").addEventListener("click", async (event) => {
+  const button = event.target.closest(".question-remove");
+  if (!button) return;
+  try {
+    await api(`/api/classes/${encodeURIComponent(state.current.code)}/questions/${encodeURIComponent(button.dataset.id)}`, {
+      method: "DELETE", key: state.current.key
+    });
+    openClass(state.current);
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+$("questionsHomeworkButton").addEventListener("click", async () => {
+  try {
+    const due = new Date(Date.now() + 7 * 864e5 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    await api(`/api/classes/${encodeURIComponent(state.current.code)}/assignments`, {
+      method: "POST", key: state.current.key,
+      body: { concept: CLASS_QUESTIONS, count: Math.min(50, Number($("questionsHomeworkButton").dataset.count)), dueDate: due }
+    });
+    openClass(state.current);
+  } catch (error) {
+    showError(error.message);
+  }
+});

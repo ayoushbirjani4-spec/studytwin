@@ -1013,3 +1013,18 @@ a.nav-item { text-decoration: none; color: inherit; }
   .print-area th { font-weight: 600; color: #333; }
   .print-foot { margin-top: 14pt !important; font-size: 8.5pt; color: #666; }
 }
+
+/* The teacher's own questions */
+.questions-form { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.questions-form textarea { min-height: 96px; font-family: "JetBrains Mono", monospace; font-size: 14px; }
+.questions-form button { height: 44px; }
+.questions-refused { margin-top: 12px; padding: 12px 16px; border-radius: var(--r-control); background: var(--wrong-soft); font-size: 13px; color: var(--text-2); }
+.questions-refused p { margin: 0 0 4px; font-weight: 600; color: var(--wrong); }
+.questions-refused ul { margin: 0; padding-left: 18px; }
+.questions-list { margin: 12px 0 0; padding-left: 24px; }
+.questions-list li { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.questions-list code { font-family: "JetBrains Mono", monospace; font-size: 14px; }
+.questions-answer { font-size: 13px; color: var(--muted); }
+.questions-list .question-remove { margin-left: auto; }
+#questionsHomeworkButton { margin-top: 12px; }
+@media (max-width: 640px) { .questions-form { grid-template-columns: 1fr; } }

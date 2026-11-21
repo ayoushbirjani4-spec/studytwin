@@ -165,6 +165,23 @@ async function removeAssignment(code, id) {
   await (await getCollection()).updateOne({ _id: clean }, { $pull: { assignments: { id } } });
 }
 
+// ------------------------------------------------------------
+// The teacher's own questions: a list of question ids (see customQuestions).
+// ------------------------------------------------------------
+
+const MAX_QUESTIONS = 50;
+
+async function setQuestions(code, ids) {
+  const clean = normaliseCode(code);
+  const list = [...new Set(ids)].slice(0, MAX_QUESTIONS);
+  if (useMemoryStore()) {
+    const found = memoryClasses.get(clean);
+    if (found) found.questions = list;
+    return;
+  }
+  await (await getCollection()).updateOne({ _id: clean }, { $set: { questions: list } });
+}
+
 function clearMemoryClasses() {
   memoryClasses.clear();
 }
@@ -173,5 +190,6 @@ module.exports = {
   create, get, normaliseCode, teacherKeyMatches,
   setPoll, closePoll, vote,
   addAssignment, removeAssignment,
+  setQuestions, MAX_QUESTIONS,
   clearMemoryClasses
 };

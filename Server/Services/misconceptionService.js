@@ -2071,6 +2071,12 @@ const UNCLASSIFIED_FEEDBACK = {
     hint: "Check what you did to each side. Both sides must change in the same way."
 };
 
+// Bracket mistakes can happen in any question with brackets, whatever its
+// topic: a teacher's own question, or a word problem like 4(x + 2) = 36.
+function hasBrackets(question) {
+    return question.concept === "distributive_property" || getQuestionStart(question).includes("(");
+}
+
 function getQuestionStart(question) {
     // A word problem has a story as its text; its equation is the start.
     if (question.equation) return question.equation;
@@ -2383,7 +2389,7 @@ async function detectMisconception(
             let diagnosis = null;
 
             if (
-                question.concept === "distributive_property" &&
+                hasBrackets(question) &&
                 (!flawedStep.label ||
                     flawedStep.label === "failed_to_distribute")
             ) {
@@ -2520,7 +2526,7 @@ async function detectMisconception(
     const stepError = findFirstStepError(work);
 
     if (
-        question.concept === "distributive_property" &&
+        hasBrackets(question) &&
         (!stepError || !stepError.label ||
             stepError.label === "failed_to_distribute")
     ) {
