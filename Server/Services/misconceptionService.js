@@ -2416,9 +2416,14 @@ async function detectMisconception(
 
         // Every written step was checked and is algebraically equivalent
         // to the one before it, so there is nothing left for the LLM to find.
-        // A single line has no step to check, so it still goes to the LLM.
-        const workFullyVerified =
-            validation.available && validation.valid && validation.steps.some(step => step.from);
+        // The live check also compares the first line with the question, so a
+        // single correct line ("5x + 12") counts as checked too: asking the
+        // LLM there only risks it flagging a line the rules know is right.
+        const liveCheck = checkSteps({ questionId: question.id, work });
+        const everyLineChecked = Boolean(liveCheck?.steps.length) &&
+            liveCheck.steps.every(step => ["given", "valid", "final"].includes(step.status));
+        const workFullyVerified = everyLineChecked ||
+            (validation.available && validation.valid && validation.steps.some(step => step.from));
 
         const llmDiagnosis = workFullyVerified
             ? null

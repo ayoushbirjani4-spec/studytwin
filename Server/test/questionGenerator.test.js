@@ -250,3 +250,17 @@ test("a correct simplify answer with checked working is settled by the rules, wi
   assert.equal(flawed.misconception.detected, true);
   assert.equal(calls, 0);
 });
+
+test("a correct one-line answer is never flagged, even if Gemini would flag it", async (t) => {
+  // Reported live: "Simplify: 5x + 9 - 7x + 3 + 7x", working "5x+12", answer "5x+12"
+  // came back "Right answer, but one step needs fixing: combining unlike terms".
+  let calls = 0;
+  t.mock.method(llmReviewService, "reviewSubmission", async () => {
+    calls++;
+    return { label: "combining_unlike_terms", incorrectStep: "5x+12", correctStep: null, explanation: null, confidence: 0.8 };
+  });
+  const result = await misconceptionService.analyzeAnswer({ questionId: "g_clt5_5_9_7_3_7", studentAnswer: "5x+12", work: "5x+12" });
+  assert.equal(result.correct, true);
+  assert.equal(result.misconception.detected, false);
+  assert.equal(calls, 0, "the rules already checked the line, so Gemini isn't asked");
+});
