@@ -171,3 +171,20 @@ test("the export numbers students instead of naming them, and the blind version 
   const full = await classReportService.exportClassAttempts(classRecord);
   assert.equal(full.find((r) => r.student === "S01").misconceptionType, "sign_error");
 });
+
+test("the report includes mastery by topic and recent work for printing", async (t) => {
+  useMemory(t);
+  const { code } = await classStore.create({ name: "Print class" });
+  t.mock.method(studentStore, "listByClass", async () => [{
+    studentId: "p1", displayName: "Pria", classCode: code,
+    concepts: { negative_numbers: { attempts: 4, correct: 3 }, fractions: { attempts: 0, correct: 0 } }
+  }]);
+  t.mock.method(attemptLogStore, "listAttempts", async () =>
+    answers("p1", "x.....", 0, "sign_error", "negative_numbers").reverse());
+
+  const [student] = (await classReportService.buildClassReport(await classStore.get(code))).students;
+  assert.deepEqual(student.topics, [{ concept: "negative_numbers", attempts: 4, mastery: 0.75 }], "topics with no answers are left out");
+  assert.equal(student.recentWork.length, 5);
+  assert.equal(student.recentWork[0].createdAt, at(5), "newest first");
+  assert.equal(student.recentWork.at(-1).mistake, null);
+});

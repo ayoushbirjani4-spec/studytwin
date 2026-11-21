@@ -14,10 +14,14 @@
       }
     } catch (e) {}
   </script>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#2847a8" />
+  <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261120-1" />
+  <link rel="stylesheet" href="./css/style.css?v=20261121-5" />
 </head>
 <body>
   <!-- Line icons (lucide shapes), referenced with <use> -->
@@ -99,6 +103,11 @@
         <div class="start-copy">
           <h2>Show your working. Fix the step that went wrong.</h2>
           <p>Write each line of an equation. StudyTwin checks every step as you go, explains the first mistake, and picks your next question from how you're doing.</p>
+
+          <div id="homeworkBox" class="homework-box hidden" role="region" aria-label="Homework">
+            <p class="homework-box-title">Homework from your teacher</p>
+            <div id="homeworkItems"></div>
+          </div>
 
           <div class="start-controls">
             <label>Topic<select id="conceptSelect"><option value="distributive_property">Distributive property</option></select></label>
@@ -371,6 +380,6 @@
       <div id="globalError" class="error-banner hidden"></div>
     </main>
   </div>
-  <script src="./js/app.js?v=20261120-1"></script>
+  <script src="./js/app.js?v=20261121-5"></script>
 </body>
 </html>

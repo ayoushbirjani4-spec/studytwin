@@ -57,10 +57,25 @@ function summariseStudent(student, rows, now) {
         recentAccuracy: last20.length
             ? Number((last20.filter((row) => row.demonstratedCorrect).length / last20.length).toFixed(2))
             : null,
+        // Hint ladder: hints asked for per answer, over the last 20.
+        hintsPerAnswer: last20.length
+            ? Number((last20.reduce((sum, row) => sum + (row.hintsUsed || 0), 0) / last20.length).toFixed(1))
+            : null,
         stuckOn: stuckCount >= STUCK_THRESHOLD
             ? { type: stuckType, label: label(stuckType), count: stuckCount, outOf: recent.length }
             : null,
         recentMistakes: countMistakes(last20),
+        // For the printed report: mastery by topic, and the latest answers.
+        topics: Object.entries(student.concepts || {})
+            .filter(([, state]) => state.attempts > 0)
+            .map(([concept, state]) => ({ concept, attempts: state.attempts, mastery: Number((state.correct / state.attempts).toFixed(2)) }))
+            .sort((a, b) => b.attempts - a.attempts),
+        recentWork: rows.slice(-5).reverse().map((row) => ({
+            createdAt: row.createdAt,
+            concept: row.concept,
+            correct: Boolean(row.demonstratedCorrect),
+            mistake: row.misconceptionDetected && row.misconceptionType ? label(row.misconceptionType) : null
+        })),
         cured: studySessionService.summariseCuredMistakes(student.curedMistakes, rows),
         twinEffect: twinService.computeTwinEffect(rows, student.twin),
         taughtTwin: Object.values(student.twin?.taught || {}).reduce((sum, n) => sum + n, 0)
@@ -128,13 +143,29 @@ async function buildClassReport(classRecord, { now = Date.now() } = {}) {
     const members = await studentStore.listByClass(classRecord.code);
 
     const students = [];
+    const homeworkRows = [];
     for (const member of members) {
         const rows = chronological(await attemptLogStore.listAttempts({
             studentId: member.studentId,
             limit: ATTEMPTS_PER_STUDENT
         }));
         students.push(summariseStudent(member, rows, now));
+        homeworkRows.push({ name: member.displayName || "Unnamed", rows });
     }
+
+    // Homework: who has finished, started or not started each assignment.
+    const assignments = (classRecord.assignments || []).map((assignment) => {
+        const progress = homeworkRows
+            .map(({ name, rows }) => ({ name, ...studySessionService.homeworkProgress(assignment, rows) }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        return {
+            ...assignment,
+            finished: progress.filter((p) => p.finished).length,
+            started: progress.filter((p) => !p.finished && p.done > 0).length,
+            notStarted: progress.filter((p) => p.done === 0).length,
+            students: progress
+        };
+    });
     students.sort((a, b) => a.name.localeCompare(b.name));
 
     // Common mistakes: how many students made each in their last 20 answers.
@@ -166,6 +197,7 @@ async function buildClassReport(classRecord, { now = Date.now() } = {}) {
             id: studentId.slice(-6),
             twinEffect: twinEffect.map((e) => ({ type: e.type, label: label(e.type), status: e.status, before: e.before, after: e.after }))
         })),
+        assignments,
         mistakes: Object.values(mistakes).sort((a, b) => b.students - a.students || b.occurrences - a.occurrences),
         evidence: {
             twinEffect: pooledTwinEffect(students),

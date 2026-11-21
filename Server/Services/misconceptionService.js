@@ -1739,6 +1739,10 @@ const STEP_LABELS = {
     arithmetic_slip: {
         message: "The method in this step looks right, but there is an arithmetic slip.",
         hint: "Recompute this step carefully."
+    },
+    wrong_equation: {
+        message: "This equation doesn't match the story.",
+        hint: "Read the story again: what is x, what is multiplied by x, and what is added on or taken away?"
     }
 };
 
@@ -1988,9 +1992,11 @@ function buildStepDiagnosis(question, stepError, finalAnswerCorrect) {
 function getCanonicalCorrectStep(question, fromStep) {
     // The question line counts as step 0, so a slip in the first step gets
     // the worked solution's first line, not just the final answer.
-    const start = String(question.question || "").replace(/^\s*solve\s*:\s*/i, "");
+    const start = getQuestionStart(question);
+    // A word problem's worked solution repeats its equation; skip repeats.
     const equationSteps = [start, ...(question.solution_steps || [])]
-        .filter(step => splitEquation(step));
+        .filter(step => splitEquation(step))
+        .filter((step, index, all) => index === 0 || normalizeEquation(step) !== normalizeEquation(all[index - 1]));
 
     for (let index = 0; index < equationSteps.length - 1; index++) {
         if (normalizeEquation(fromStep) === normalizeEquation(equationSteps[index])) {
@@ -2066,6 +2072,8 @@ const UNCLASSIFIED_FEEDBACK = {
 };
 
 function getQuestionStart(question) {
+    // A word problem has a story as its text; its equation is the start.
+    if (question.equation) return question.equation;
     return String(question.question || "")
         .replace(/^\s*(solve|simplify)\s*:\s*/i, "")
         .trim();
@@ -2101,7 +2109,7 @@ function compareLines(from, to) {
     return "unreadable";
 }
 
-function checkSteps({ questionId, work }) {
+function checkSteps({ questionId, work, reveal = false }) {
     const question = questionService.findQuestionById(questionId);
     if (!question) {
         return null;
@@ -2115,6 +2123,19 @@ function checkSteps({ questionId, work }) {
     let firstErrorIndex = null;
 
     const steps = lines.map((line, index) => {
+        // Word problem: the first line is the student's own equation for the story.
+        if (index === 0 && question.equation && parseEquation(line) && !isBareAnswerLine(line)) {
+            reference = line;
+            if (equationsEquivalent(start, line)) {
+                return { line, status: "valid", label: null, message: "Your equation matches the story.", hint: null };
+            }
+            firstErrorIndex = 0;
+            return {
+                line, status: "invalid", label: "wrong_equation", ...STEP_LABELS.wrong_equation,
+                ...(reveal ? { correctStep: question.equation } : {})
+            };
+        }
+
         if (index === 0 && normalizeEquation(line) === normalizeEquation(start)) {
             return { line, status: "given", label: null, message: null, hint: null };
         }
@@ -2167,7 +2188,11 @@ function checkSteps({ questionId, work }) {
             label,
             message: feedback.message,
             // Only the first mistake gets a hint, so the student fixes one thing at a time.
-            hint: isFirstError ? feedback.hint : null
+            hint: isFirstError ? feedback.hint : null,
+            // The hint ladder's last rung, sent only when the student asks for it.
+            ...(isFirstError && reveal
+                ? { correctStep: getCanonicalCorrectStep(question, from) || getVerifiedAlgebraicCorrection(from) }
+                : {})
         };
     });
 
@@ -2430,6 +2455,33 @@ async function detectMisconception(
         };
     }
 
+
+    // ========================================================
+    // WORD PROBLEM SET-UP
+    // ========================================================
+    // The student's first line is their equation for the story. If it has
+    // a different solution, that is the first mistake, whatever follows.
+
+    if (question.equation) {
+        const firstLine = splitWorkSteps(work)[0];
+        if (firstLine && parseEquation(firstLine) && !isBareAnswerLine(firstLine) &&
+            !equationsEquivalent(question.equation, firstLine)) {
+            return {
+                detected: true,
+                type: "wrong_equation",
+                concept: question.concept,
+                confidence: 0.9,
+                ...STEP_LABELS.wrong_equation,
+                incorrectStep: firstLine,
+                previousStep: null,
+                correctStep: question.equation,
+                explanation: `The story gives ${question.equation}.`,
+                source: "rules",
+                workValidation: validation,
+                mlPrediction: null
+            };
+        }
+    }
 
     // ========================================================
     // MACHINE LEARNING STEP ANALYSIS

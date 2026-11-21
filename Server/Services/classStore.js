@@ -135,8 +135,43 @@ async function vote(code, pollId, voterId, lineIndex) {
   return result.matchedCount > 0;
 }
 
+// ------------------------------------------------------------
+// Homework: { id, concept, count, dueDate: "YYYY-MM-DD", createdAt }
+// Progress isn't stored: it is counted from the students' answers.
+// ------------------------------------------------------------
+
+const MAX_ASSIGNMENTS = 20;
+
+async function addAssignment(code, assignment) {
+  const clean = normaliseCode(code);
+  if (useMemoryStore()) {
+    const found = memoryClasses.get(clean);
+    if (found) found.assignments = [...(found.assignments || []), structuredClone(assignment)].slice(-MAX_ASSIGNMENTS);
+    return;
+  }
+  await (await getCollection()).updateOne(
+    { _id: clean },
+    { $push: { assignments: { $each: [assignment], $slice: -MAX_ASSIGNMENTS } } }
+  );
+}
+
+async function removeAssignment(code, id) {
+  const clean = normaliseCode(code);
+  if (useMemoryStore()) {
+    const found = memoryClasses.get(clean);
+    if (found) found.assignments = (found.assignments || []).filter((a) => a.id !== id);
+    return;
+  }
+  await (await getCollection()).updateOne({ _id: clean }, { $pull: { assignments: { id } } });
+}
+
 function clearMemoryClasses() {
   memoryClasses.clear();
 }
 
-module.exports = { create, get, normaliseCode, teacherKeyMatches, setPoll, closePoll, vote, clearMemoryClasses };
+module.exports = {
+  create, get, normaliseCode, teacherKeyMatches,
+  setPoll, closePoll, vote,
+  addAssignment, removeAssignment,
+  clearMemoryClasses
+};

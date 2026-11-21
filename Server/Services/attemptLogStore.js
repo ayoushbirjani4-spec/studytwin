@@ -59,6 +59,8 @@ async function logAttempt(entry) {
     targetedPracticeSessionId: entry.targetedPracticeSessionId ?? null,
     targetedPracticePhase: entry.targetedPracticePhase ?? null,
     liveHintsSeen: Number.isInteger(entry.liveHintsSeen) ? entry.liveHintsSeen : 0,
+    // Hints the student asked for on the hint ladder before submitting.
+    hintsUsed: Number.isInteger(entry.hintsUsed) ? entry.hintsUsed : 0,
     createdAt: new Date()
   };
 

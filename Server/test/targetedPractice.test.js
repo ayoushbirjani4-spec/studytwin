@@ -37,7 +37,7 @@ function answerFor(questionId, mistake = null) {
     const lesson = twinService.buildTwinSolution(question, mistake, 0);
     return { studentAnswer: lesson.twinAnswer, work: lesson.lines.join("\n") };
   }
-  const start = question.question.replace(/^(Solve|Simplify):\s*/, "");
+  const start = question.equation || question.question.replace(/^(Solve|Simplify):\s*/, "");
   return {
     studentAnswer: question.answer,
     work: [start, ...question.solution_steps.filter((s) => s.includes("="))].join("\n")

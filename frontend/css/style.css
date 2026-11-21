@@ -958,3 +958,58 @@ a.nav-item { text-decoration: none; color: inherit; }
 .vote-line code { font-family: "JetBrains Mono", monospace; }
 .vote-line:disabled { opacity: 0.6; }
 .vote-line.is-mine { border-color: var(--ink); background: var(--ink-soft); }
+
+/* Homework */
+.homework-form { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.homework-form label { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.homework-form button { height: 44px; }
+.profile-card > .homework-note { margin: 12px 0 0; font-size: 13px; }
+.homework-row { padding: 16px 0; border-top: 1px solid var(--line); }
+.homework-row:first-child { margin-top: 8px; }
+.homework-overdue { color: var(--wrong); }
+.homework-who summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
+.homework-who table { margin-top: 8px; }
+.homework-remove { margin-top: 8px; }
+.homework-box { margin: 24px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--card); }
+.homework-box-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.homework-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line); }
+.homework-item:first-of-type { border-top: 0; }
+.homework-item strong { display: block; font-size: 14px; font-weight: 500; }
+.homework-item span { font-size: 13px; color: var(--text-2); }
+.homework-item .is-done { color: var(--right); }
+.homework-item .is-overdue { color: var(--wrong); }
+@media (max-width: 640px) {
+  .homework-form { grid-template-columns: 1fr 1fr; }
+  .homework-form label:first-child, .homework-form button { grid-column: 1 / -1; }
+}
+
+/* Hint ladder and word problems */
+.live-hint-button { display: block; margin-top: 4px; font-size: 13px; }
+.live-hint code { font-family: "JetBrains Mono", monospace; color: var(--right); }
+.live-hint + .live-hint { display: block; margin-top: 4px; }
+.question-card h2.is-story { font-size: 22px; line-height: 1.45; font-weight: 500; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Printable reports: hidden on screen; on paper, only the report shows. */
+.print-area { display: none; }
+@media print {
+  body > *:not(.print-area) { display: none !important; }
+  body { background: #fff !important; }
+  .print-area { display: block; color: #111; font-family: Figtree, system-ui, sans-serif; font-size: 11pt; }
+  .print-page { break-after: page; padding: 0 0 12pt; }
+  .print-page:last-child { break-after: auto; }
+  .print-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16pt; padding-bottom: 8pt; border-bottom: 1.5pt solid #111; }
+  .print-head h1 { margin: 2pt 0 0; font-size: 20pt; }
+  .print-head p { margin: 0; text-align: right; font-size: 10pt; color: #444; }
+  .print-kicker { margin: 0; font-size: 9pt; letter-spacing: 0.02em; color: #555; }
+  .print-stats { display: flex; gap: 24pt; margin: 12pt 0; }
+  .print-stats strong { display: block; font-size: 16pt; }
+  .print-stats span { font-size: 9pt; color: #555; }
+  .print-area h2 { margin: 14pt 0 4pt; font-size: 12pt; break-after: avoid; }
+  .print-area p, .print-area li { margin: 3pt 0; line-height: 1.4; }
+  .print-area table { width: 100%; border-collapse: collapse; font-size: 10pt; break-inside: avoid; }
+  .print-area th, .print-area td { padding: 3pt 6pt; border-bottom: 0.5pt solid #bbb; text-align: left; }
+  .print-area th { font-weight: 600; color: #333; }
+  .print-foot { margin-top: 14pt !important; font-size: 8.5pt; color: #666; }
+}

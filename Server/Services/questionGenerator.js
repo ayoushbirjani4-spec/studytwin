@@ -184,6 +184,23 @@ const bracketFractionTemplate = (b, d, c) => equationQuestion({
     explanation: `The whole of x + ${b} is divided by ${d}, so multiply both sides by ${d} first.`
 });
 
+// Word problems: a story around an existing template. The student writes
+// the equation first; `equation` is what the story gives, for checking.
+function wordProblem(build, describe) {
+    return (...values) => {
+        const base = build(...values);
+        const equation = base.question.replace(/^Solve:\s*/, "");
+        return {
+            ...base,
+            concept: "word_problems",
+            question: describe(...values),
+            equation,
+            solution_steps: ["Write an equation for the story", equation, ...base.solution_steps],
+            explanation: `Turn the story into an equation first (${equation}), then solve it. ${base.explanation}`
+        };
+    };
+}
+
 function simplifyQuestion(terms, xTotal, constantTotal) {
     const text = terms
         .map((t, i) => (i === 0 ? t : t.startsWith("-") ? `- ${t.slice(1)}` : `+ ${t}`))
@@ -262,6 +279,24 @@ const TEMPLATES = {
     fr3: { concept: "equations_with_fractions", difficulty: 3, params: [[1, 9], [2, 6], [2, 9]],
         valid: (b, d, c) => c * d > b,
         build: bracketFractionTemplate },
+
+    // Word problems
+    wp1: { concept: "word_problems", difficulty: 1, params: [[2, 5], [2, 6], [2, 12]],
+        build: wordProblem(twoStepTemplate("word_problems", 1),
+            (a, b, x) => `A taxi charges £${b} plus £${a} for every mile. A journey cost £${a * x + b}. How many miles long was the journey?`) },
+    wp2: { concept: "word_problems", difficulty: 2, params: [[3, 12], [1, 5], [2, 9]],
+        build: wordProblem(twoStepTemplate("word_problems", 1),
+            (a, b, x) => `Concert tickets cost £${a} each, plus a £${b} booking fee for the whole order. An order cost £${a * x + b}. How many tickets were bought?`) },
+    wp3: { concept: "word_problems", difficulty: 2, params: [[2, 6], [3, 20], [2, 10]],
+        build: wordProblem(twoStepTemplate("word_problems", 1),
+            (a, b, x) => `A plant is ${b} cm tall and grows ${a} cm every week. After how many weeks will it be ${a * x + b} cm tall?`) },
+    wp4: { concept: "word_problems", difficulty: 3, params: [[2, 6], [1, 5], [3, 12]],
+        build: wordProblem((a, b, x) => bracket("word_problems", 1)(a, 1, b, x),
+            (a, b, x) => `${a} friends each buy a cinema ticket and a £${b} snack. Altogether they spend £${a * (x + b)}. How much does one ticket cost?`) },
+    wp5: { concept: "word_problems", difficulty: 3, params: [[4, 9], [1, 7], [2, 12]],
+        valid: (a, c) => a - c >= 2,
+        build: wordProblem((a, c, x) => bothSidesTemplate(1)(a, 0, c, x),
+            (a, c, x) => `Gym A charges £${a} a visit. Gym B charges a £${(a - c) * x} joining fee plus £${c} a visit. After how many visits do the two gyms cost the same?`) },
 
     // Combining like terms
     clt1: { concept: "combining_like_terms", difficulty: 1, params: [[2, 9], [2, 9]],
@@ -391,10 +426,10 @@ function generateQuestionSet({ perTemplate = 4, seed = "studytwin" } = {}) {
 // two-step equation is where students do something to only one side.
 
 const TRAPS = {
-    failed_to_distribute: ["dp1", "dp4", "dp3", "dp2"],
+    failed_to_distribute: ["dp1", "dp4", "dp3", "dp2", "wp4"],
     sign_error: ["dp2", "dp3", "ng2", "ng3", "ng4", "clt2", "clt4", "clt5"],
-    wrong_inverse_op: ["dp2", "dp3", "io2", "io4", "io6", "eb2", "eb5", "xb1", "xb2", "xb3", "ng1", "ng3", "fr1", "fr2", "fr3"],
-    one_sided_op: ["dp1", "dp4", "io5", "io6", "eb4", "eb5", "xb1", "xb2", "xb3", "ng3", "ng4", "fr2"],
+    wrong_inverse_op: ["dp2", "dp3", "io2", "io4", "io6", "eb2", "eb5", "xb1", "xb2", "xb3", "ng1", "ng3", "fr1", "fr2", "fr3", "wp1", "wp2", "wp3", "wp4", "wp5"],
+    one_sided_op: ["dp1", "dp4", "io5", "io6", "eb4", "eb5", "xb1", "xb2", "xb3", "ng3", "ng4", "fr2", "wp1", "wp2", "wp3", "wp4", "wp5"],
     arithmetic_slip: ["dp3", "dp4", "io5", "io6", "eb4", "eb5", "xb3", "ng2", "ng3", "ng4", "fr1", "fr2", "clt4", "clt5"],
     combining_unlike_terms: ["clt3", "clt4", "clt5"]
 };

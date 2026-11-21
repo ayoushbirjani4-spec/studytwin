@@ -81,6 +81,9 @@ const NUMBER = "(-?\\d+(?:\\.\\d+)?)";
 
 // Returns a description of the question's starting line, or null.
 function parseQuestion(question) {
+    // A word problem: the twin works from the story's equation.
+    if (question.equation) return parseQuestion({ ...question, question: question.equation, equation: null });
+
     const text = String(question.question || "")
         .replace(/^\s*(solve|simplify)\s*:\s*/i, "")
         .replace(/\s+/g, "");

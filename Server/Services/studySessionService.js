@@ -31,6 +31,7 @@ const studentStore = require("./studentStore");
 const attemptLogStore = require("./attemptLogStore");
 const twinService = require("./twinService");
 const questionGenerator = require("./questionGenerator");
+const classStore = require("./classStore");
 const { randomUUID } = require("node:crypto");
 
 
@@ -45,6 +46,7 @@ const MISCONCEPTION_LABELS = {
     one_sided_op: "One-sided operation",
     arithmetic_slip: "Arithmetic slip",
     combining_unlike_terms: "Combining unlike terms",
+    wrong_equation: "Equation doesn't match the story",
     invalid_transformation: "Invalid step",
     unknown_error: "Unknown error"
 };
@@ -167,6 +169,21 @@ function gradeCheckup(student, questionId, misconceptionType, demonstratedCorrec
         return { ...summary, result: "unsettled" };
     }
     return null;
+}
+
+// Homework progress: answers on the assignment's topic since it was set.
+// Any practice on that topic counts, so students needn't start it a special way.
+function homeworkProgress(assignment, attempts = []) {
+    const since = new Date(assignment.createdAt);
+    const answers = attempts
+        .filter(row => row.concept === assignment.concept && new Date(row.createdAt) >= since)
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const counted = answers.slice(0, assignment.count);
+    return {
+        done: counted.length,
+        correct: counted.filter(row => row.demonstratedCorrect).length,
+        finished: answers.length >= assignment.count
+    };
 }
 
 function cureStatus(item) {
@@ -392,7 +409,10 @@ async function recordAnswer({
     resetToken = null,
 
     // How many mistakes the live step checker pointed out before submitting.
-    liveHintsSeen = 0
+    liveHintsSeen = 0,
+
+    // How many hints the student asked for on the hint ladder.
+    hintsUsed = 0
 
 }) {
 
@@ -789,6 +809,7 @@ async function recordAnswer({
             : null,
         targetedPracticeSessionId: targetPractice?.sessionId || null,
         liveHintsSeen: Math.min(Math.max(Number.parseInt(liveHintsSeen, 10) || 0, 0), 50),
+        hintsUsed: Math.min(Math.max(Number.parseInt(hintsUsed, 10) || 0, 0), 50),
         targetedPracticePhase: targetedPracticeForAnswer
             ? "focused"
             : targetPractice?.completed && targetPractice.concept === realQuestion.concept
@@ -1394,6 +1415,18 @@ async function getStudentProfile(studentId) {
 
     let commonMistakes = [];
 
+    // Homework from the student's class. A class lookup problem must not
+    // break the rest of the profile.
+    let homework = [];
+    if (student.classCode) {
+        try {
+            const classRecord = await classStore.get(student.classCode);
+            homework = classRecord?.assignments || [];
+        } catch (_err) {
+            homework = [];
+        }
+    }
+
     let trendAttemptLogs = [];
     try {
         trendAttemptLogs = await attemptLogStore.listAttempts({
@@ -1795,6 +1828,9 @@ async function getStudentProfile(studentId) {
             ? { code: student.classCode, displayName: student.displayName || null }
             : null,
 
+        // Homework set by their teacher, with progress from their answers.
+        homework: homework.map(assignment => ({ ...assignment, ...homeworkProgress(assignment, trendAttemptLogs) })),
+
         // How far the twin has come across the student's own mistakes.
         twinProgress: twinService.summariseTwinProgress(commonMistakes, student.twin, null),
 
@@ -2076,5 +2112,6 @@ module.exports = {
         withStudentLock(args.studentId, () => joinClass(args)),
 
     labelMisconception,
-    summariseCuredMistakes
+    summariseCuredMistakes,
+    homeworkProgress
 };

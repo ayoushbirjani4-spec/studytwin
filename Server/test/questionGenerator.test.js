@@ -30,9 +30,11 @@ function sampleQuestions(perTemplate = 15) {
 
 // What a student who gets it right would write.
 function correctWork(question) {
-  const start = question.question.replace(/^(Solve|Simplify):\s*/, "");
+  const start = question.equation || question.question.replace(/^(Solve|Simplify):\s*/, "");
   if (question.question.startsWith("Simplify")) return `${start}\n${question.answer}`;
-  return [start, ...question.solution_steps.filter((s) => s.includes("="))].join("\n");
+  // A word problem's steps repeat its equation as the first line.
+  const steps = question.solution_steps.filter((s) => s.includes("=") && s !== question.equation);
+  return [start, ...steps].join("\n");
 }
 
 test("ids rebuild the exact question, and bad ids are refused", () => {
@@ -56,7 +58,9 @@ test("every topic and level gets questions in the bank's style", () => {
       assert.ok(q, `${concept} d${difficulty}`);
       assert.equal(q.concept, concept);
       assert.equal(q.difficulty, difficulty);
-      assert.match(q.question, /^(Solve|Simplify): /);
+      // Word problems are stories with the equation kept alongside.
+      if (q.equation) assert.match(q.equation, /=/);
+      else assert.match(q.question, /^(Solve|Simplify): /);
       assert.ok(!q.id.includes(":"), "twin memory keys split on ':'");
     }
   }
@@ -64,7 +68,7 @@ test("every topic and level gets questions in the bank's style", () => {
 
 test("equation answers are whole numbers and simplify answers are tidy", () => {
   for (const q of sampleQuestions()) {
-    if (q.question.startsWith("Solve")) {
+    if (q.question.startsWith("Solve") || q.equation) {
       assert.ok(Number.isInteger(Number(q.answer)), `${q.id}: ${q.answer}`);
     } else {
       assert.match(q.answer, /^\d*x( [+-] \d+)?$/, q.id);

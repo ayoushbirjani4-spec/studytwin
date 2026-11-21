@@ -139,7 +139,14 @@ const liveSteps = {
   timer: null,
   requestId: 0,
   // Distinct mistakes the checker has pointed out for this question.
-  hintsSeen: new Set()
+  hintsSeen: new Set(),
+  // Hint ladder for the first mistake: 0 = nudge only, 1 = mistake named,
+  // 2 = correct step shown. Resets when the first mistake changes.
+  hintLevel: 0,
+  hintKey: "",
+  correctStep: null,
+  hintsUsed: 0,
+  lastSteps: []
 };
 
 const LIVE_STATUS = {
@@ -154,6 +161,11 @@ function resetLiveSteps() {
   clearTimeout(liveSteps.timer);
   liveSteps.requestId += 1;
   liveSteps.hintsSeen = new Set();
+  liveSteps.hintLevel = 0;
+  liveSteps.hintKey = "";
+  liveSteps.correctStep = null;
+  liveSteps.hintsUsed = 0;
+  liveSteps.lastSteps = [];
   $("liveSteps").innerHTML = "";
   $("liveSteps").classList.add("hidden");
 }
@@ -275,18 +287,41 @@ function renderLiveSteps(steps) {
     return;
   }
 
+  liveSteps.lastSteps = steps;
+  // The first mistake is the one with a hint; a new first mistake starts the ladder again.
+  const first = steps.find((step) => step.status === "invalid" && step.hint);
+  const key = first ? `${first.line}|${first.label || ""}` : "";
+  if (key !== liveSteps.hintKey) {
+    liveSteps.hintKey = key;
+    liveSteps.hintLevel = 0;
+    liveSteps.correctStep = null;
+  }
+
   $("liveSteps").innerHTML = steps
-    .map((step) => {
+    .map((step, index) => {
       const status = LIVE_STATUS[step.status] || LIVE_STATUS.unreadable;
-      if (step.status === "invalid") {
-        liveSteps.hintsSeen.add(`${step.line}|${step.label || ""}`);
-      }
-      const note = step.message
+      let note = step.message
         ? `<span class="live-note">${escapeHtml(step.message)}</span>`
         : "";
-      const hint = step.hint
-        ? `<span class="live-hint">Hint: ${escapeHtml(step.hint)}</span>`
-        : "";
+      let hint = "";
+      if (step.status === "invalid") {
+        liveSteps.hintsSeen.add(`${step.line}|${step.label || ""}`);
+        if (step !== first) {
+          note = `<span class="live-note">Check this line too.</span>`;
+        } else if (liveSteps.hintLevel === 0) {
+          // Rung 1: a nudge. The student looks for the mistake themselves.
+          note = `<span class="live-note">Something isn't right in line ${index + 1}. Can you spot it?</span>`;
+          hint = `<button class="text-button live-hint-button" type="button">Hint</button>`;
+        } else {
+          // Rung 2: the mistake named. Rung 3: the correct step.
+          hint = `<span class="live-hint">Hint: ${escapeHtml(step.hint)}</span>` +
+            (liveSteps.hintLevel === 2 && liveSteps.correctStep
+              ? `<span class="live-hint">This line should be: <code>${escapeHtml(liveSteps.correctStep)}</code></span>`
+              : liveSteps.hintLevel === 1
+                ? `<button class="text-button live-hint-button" type="button">Show the step</button>`
+                : "");
+        }
+      }
       return `
         <li class="live-step live-${escapeHtml(step.status)}">
           <span class="live-icon" role="img" aria-label="${status.label}">${status.icon}</span>
@@ -298,6 +333,31 @@ function renderLiveSteps(steps) {
     })
     .join("");
   $("liveSteps").classList.remove("hidden");
+}
+
+// Climb one rung of the hint ladder for the first mistake.
+async function nextHint() {
+  if (liveSteps.hintLevel === 0) {
+    liveSteps.hintLevel = 1;
+    liveSteps.hintsUsed += 1;
+    renderLiveSteps(liveSteps.lastSteps);
+    return;
+  }
+  if (liveSteps.hintLevel !== 1 || !state.question) return;
+  try {
+    const data = await api("/api/steps/check", {
+      method: "POST",
+      body: JSON.stringify({ questionId: state.question.id, work: $("workInput").value, reveal: true })
+    });
+    const first = (data.steps || []).find((step) => step.status === "invalid" && step.hint);
+    if (!first?.correctStep) return;
+    liveSteps.correctStep = first.correctStep;
+    liveSteps.hintLevel = 2;
+    liveSteps.hintsUsed += 1;
+    renderLiveSteps(data.steps);
+  } catch {
+    // The ladder is a helper: if this fails, the student can still submit.
+  }
 }
 
 function renderQuestion(question) {
@@ -322,6 +382,13 @@ function renderQuestion(question) {
 
   $("questionText").textContent =
     question.question || "Question unavailable";
+
+  // A word problem is a story: smaller text, and the working starts with the equation.
+  const isStory = !/^(Solve|Simplify):/i.test(question.question || "");
+  $("questionText").classList.toggle("is-story", isStory);
+  $("workInput").placeholder = isStory
+    ? "Write an equation for the story first, then one step per line"
+    : "Start by copying the question, then one step per line";
 
   $("answerInput").value = "";
   $("workInput").value = "";
@@ -710,7 +777,9 @@ async function submitAnswer() {
 
           work,
 
-          liveHintsSeen: liveSteps.hintsSeen.size
+          liveHintsSeen: liveSteps.hintsSeen.size,
+
+          hintsUsed: liveSteps.hintsUsed
         })
       }
     );
@@ -1854,11 +1923,32 @@ function prefillClassFromLink() {
   $("classJoin").open = true;
 }
 
+// Homework from the student's class: what is left, and what is done.
+function renderStudentHomework(homework) {
+  const now = new Date();
+  const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  // Unfinished work, plus finished work until its due date passes.
+  const shown = homework.filter((a) => !a.finished || a.dueDate >= today);
+  $("homeworkBox").classList.toggle("hidden", shown.length === 0);
+  $("homeworkItems").innerHTML = shown.map((a) => {
+    const due = new Date(`${a.dueDate}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    const status = a.finished
+      ? `<span class="is-done">Done</span>`
+      : `<span class="${a.dueDate < today ? "is-overdue" : ""}">${a.done} of ${a.count} done · ${a.dueDate < today ? "was due" : "due"} ${escapeHtml(due)}</span>`;
+    return `
+      <div class="homework-item">
+        <div><strong>${a.count} questions on ${escapeHtml(conceptName(a.concept).toLowerCase())}</strong>${status}</div>
+        ${a.finished ? "" : `<button class="ghost-button homework-start" type="button" data-concept="${escapeHtml(a.concept)}">${a.done ? "Carry on" : "Start"}</button>`}
+      </div>`;
+  }).join("");
+}
+
 async function loadMotivation() {
   try {
     const data = await api(`/api/students/${encodeURIComponent(state.studentId)}`);
     renderMotivation(data.profile);
     renderClassMembership(data.profile?.classMembership || null);
+    renderStudentHomework(data.profile?.homework || []);
   } catch (error) {
     // A new student has no record yet: show an empty goal.
     if (error.status === 404) {
@@ -1960,6 +2050,9 @@ $("twinLines").addEventListener("click", (event) => {
 });
 
 $("workInput").addEventListener("input", scheduleLiveCheck);
+$("liveSteps").addEventListener("click", (event) => {
+  if (event.target.closest(".live-hint-button")) nextHint();
+});
 $("photoButton").addEventListener("click", () => $("photoInput").click());
 $("photoInput").addEventListener("change", (event) => readPhoto(event.target.files?.[0]));
 
@@ -2002,5 +2095,14 @@ darkQuery.addEventListener("change", updateThemeButton);
 loadMotivation();
 
 $("classJoinForm").addEventListener("submit", joinClass);
+$("homeworkItems").addEventListener("click", (event) => {
+  const button = event.target.closest(".homework-start");
+  if (button) practiceTopic(button.dataset.concept);
+});
 $("leaveClassButton").addEventListener("click", leaveClass);
 prefillClassFromLink();
+
+// Installable app: works offline for pages; answers still need the network (see sw.js).
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}

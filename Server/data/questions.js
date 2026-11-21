@@ -526,6 +526,49 @@ const questions = [
         id: "fr_005", question: "Solve: (x + 5)/2 = 6", concept: "equations_with_fractions", difficulty: 3, answer: "7",
         solution_steps: ["Multiply both sides by 2", "x + 5 = 12", "Subtract 5 from both sides", "x = 7"],
         explanation: "Multiply both sides by 2 to clear the fraction, then subtract 5."
+    },
+
+
+    // ========================================================
+    // WORD PROBLEMS
+    // ========================================================
+    // `equation` is what the story gives: the student writes it as their
+    // first line, and it is checked against this.
+
+    {
+        id: "wp_001",
+        question: "A taxi charges £3 plus £2 for every mile. A journey cost £15. How many miles long was the journey?",
+        equation: "2x + 3 = 15", concept: "word_problems", difficulty: 1, answer: "6",
+        solution_steps: ["Write an equation for the story", "2x + 3 = 15", "Subtract 3 from both sides", "2x = 12", "Divide both sides by 2", "x = 6"],
+        explanation: "Let x be the number of miles: £2 per mile is 2x, plus the £3 charge, makes £15."
+    },
+    {
+        id: "wp_002",
+        question: "Cinema tickets cost £8 each, plus a £2 booking fee for the whole order. An order cost £34. How many tickets were bought?",
+        equation: "8x + 2 = 34", concept: "word_problems", difficulty: 2, answer: "4",
+        solution_steps: ["Write an equation for the story", "8x + 2 = 34", "Subtract 2 from both sides", "8x = 32", "Divide both sides by 8", "x = 4"],
+        explanation: "Let x be the number of tickets: 8x for the tickets plus £2 for the fee makes £34."
+    },
+    {
+        id: "wp_003",
+        question: "A plant is 5 cm tall and grows 3 cm every week. After how many weeks will it be 29 cm tall?",
+        equation: "3x + 5 = 29", concept: "word_problems", difficulty: 2, answer: "8",
+        solution_steps: ["Write an equation for the story", "3x + 5 = 29", "Subtract 5 from both sides", "3x = 24", "Divide both sides by 3", "x = 8"],
+        explanation: "Let x be the number of weeks: it grows 3x and started at 5, making 29."
+    },
+    {
+        id: "wp_004",
+        question: "4 friends each buy a cinema ticket and a £2 snack. Altogether they spend £36. How much does one ticket cost?",
+        equation: "4(x + 2) = 36", concept: "word_problems", difficulty: 3, answer: "7",
+        solution_steps: ["Write an equation for the story", "4(x + 2) = 36", "Distribute 4 to both x and 2", "4x + 8 = 36", "Subtract 8 from both sides", "4x = 28", "Divide both sides by 4", "x = 7"],
+        explanation: "Let x be the ticket price: each friend spends x + 2, and 4 friends spend 4(x + 2)."
+    },
+    {
+        id: "wp_005",
+        question: "Gym A charges £6 a visit. Gym B charges a £20 joining fee plus £2 a visit. After how many visits do the two gyms cost the same?",
+        equation: "6x = 2x + 20", concept: "word_problems", difficulty: 3, answer: "5",
+        solution_steps: ["Write an equation for the story", "6x = 2x + 20", "Subtract 2x from both sides", "4x = 20", "Divide both sides by 4", "x = 5"],
+        explanation: "Let x be the number of visits: Gym A costs 6x and Gym B costs 2x + 20. Set them equal."
     }
 
 ];

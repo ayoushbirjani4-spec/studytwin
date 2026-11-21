@@ -125,3 +125,8 @@ $("voteCodeForm").addEventListener("submit", (event) => {
 const fromLink = new URLSearchParams(location.search).get("class");
 if (fromLink) start(fromLink);
 else $("voteCodeForm").classList.remove("hidden");
+
+// Installable app: works offline for pages; answers still need the network (see sw.js).
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}

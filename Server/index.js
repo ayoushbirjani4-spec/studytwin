@@ -489,7 +489,7 @@ app.post(
         }
 
         try {
-            const result = misconceptionService.checkSteps({ questionId, work });
+            const result = misconceptionService.checkSteps({ questionId, work, reveal: req.body.reveal === true });
             if (!result) {
                 return res.status(404).json({
                     success: false,
@@ -1389,6 +1389,61 @@ app.get("/api/classes/:code/export.csv", stepCheckRateLimiter, async (req, res) 
         res.send(classReportService.toCsv(rows));
     } catch (error) {
         sendServiceError(res, error, "Unable to export the class.");
+    }
+});
+
+
+// ============================================================
+// HOMEWORK
+// ============================================================
+//
+// POST   /api/classes/:code/assignments        teacher: { concept, count, dueDate }
+// DELETE /api/classes/:code/assignments/:id    teacher
+//
+// Progress is counted from students' answers, in the class report and in
+// each student's profile.
+//
+// ============================================================
+
+app.post("/api/classes/:code/assignments", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const { concept, count, dueDate } = req.body || {};
+        const due = /^\d{4}-\d{2}-\d{2}$/.test(String(dueDate)) ? new Date(`${dueDate}T00:00:00Z`) : null;
+        const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z");
+        if (!questionService.getConcepts().includes(concept)) {
+            return res.status(400).json({ success: false, error: "Choose a topic for the homework." });
+        }
+        if (!Number.isInteger(count) || count < 1 || count > 50) {
+            return res.status(400).json({ success: false, error: "Set between 1 and 50 questions." });
+        }
+        // Allow "yesterday" so a teacher a time zone behind UTC can set today.
+        if (!due || Number.isNaN(due.getTime()) || due < today - 24 * 60 * 60 * 1000 || due - today > 366 * 24 * 60 * 60 * 1000) {
+            return res.status(400).json({ success: false, error: "Choose a due date in the next year." });
+        }
+        const assignment = {
+            id: require("node:crypto").randomUUID().slice(0, 8),
+            concept,
+            count,
+            dueDate,
+            createdAt: new Date().toISOString()
+        };
+        await classStore.addAssignment(classRecord.code, assignment);
+        res.status(201).json({ success: true, assignment });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to set the homework.");
+    }
+});
+
+app.delete("/api/classes/:code/assignments/:id", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        await classStore.removeAssignment(classRecord.code, String(req.params.id));
+        res.json({ success: true });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to remove the homework.");
     }
 });
 

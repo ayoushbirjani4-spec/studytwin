@@ -130,8 +130,10 @@ function renderStudents(students) {
       <td>${s.answers}</td>
       <td>${escapeHtml(timeAgo(s.lastActive))}</td>
       <td>${percent(s.recentAccuracy)}</td>
+      <td>${s.hintsPerAnswer === null ? `<span class="muted">–</span>` : `${s.hintsPerAnswer} per answer`}</td>
       <td>${s.stuckOn ? `<span class="mistake-tag">${escapeHtml(s.stuckOn.label)}</span>` : `<span class="muted">–</span>`}</td>
       <td>${s.cured.length ? s.cured.map((c) => escapeHtml(c.label)).join(", ") : `<span class="muted">–</span>`}</td>
+      <td><button class="text-button print-student" type="button" data-id="${escapeHtml(s.id)}">Print</button></td>
     </tr>
   `).join("");
 }
@@ -196,6 +198,7 @@ function renderReport(report) {
   renderMistakes(report.mistakes, report.totals.students);
   renderStudents(report.students);
   renderEvidence(report.evidence);
+  renderHomework(report.assignments || [], report.totals.students);
 }
 
 async function openClass(entry) {
@@ -537,4 +540,181 @@ function stopVote() {
       method: "POST", key: state.current.key, body: { pollId }
     }).catch(() => {});
   }
+}
+
+// ------------------------------------------------------------
+// Homework
+// ------------------------------------------------------------
+
+const topicName = (value) => {
+  const text = String(value || "").replace(/_/g, " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+// "2026-11-28" -> "Fri 28 Nov", read as a calendar date (no time zone shift).
+const dueLabel = (date) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+const todayString = () => {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+async function loadHomeworkTopics() {
+  try {
+    const data = await api("/api/questions/concepts");
+    $("homeworkTopic").innerHTML = data.concepts
+      .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(topicName(c))}</option>`).join("");
+  } catch {
+    // The form still shows; the server checks the topic.
+  }
+  const nextWeek = new Date(Date.now() + 7 * 864e5 - new Date().getTimezoneOffset() * 60000);
+  $("homeworkDue").value = nextWeek.toISOString().slice(0, 10);
+  $("homeworkDue").min = todayString();
+}
+
+function renderHomework(assignments, studentCount) {
+  const today = todayString();
+  $("homeworkList").innerHTML = assignments.slice().reverse().map((a) => {
+    const overdue = a.dueDate < today;
+    const share = studentCount ? Math.round((a.finished / studentCount) * 100) : 0;
+    const rows = a.students.map((s) => `
+      <tr>
+        <td>${escapeHtml(s.name)}</td>
+        <td>${s.done} of ${a.count}${s.finished ? " ✓" : ""}</td>
+        <td>${s.done ? `${s.correct} right` : `<span class="muted">–</span>`}</td>
+      </tr>`).join("");
+    return `
+      <div class="homework-row">
+        <div class="mastery-head">
+          <strong>${a.count} questions · ${escapeHtml(topicName(a.concept))}</strong>
+          <span class="${overdue ? "homework-overdue" : ""}">${overdue ? "Was due" : "Due"} ${escapeHtml(dueLabel(a.dueDate))}</span>
+        </div>
+        <div class="mastery-track"><div class="mastery-fill" style="width:${share}%"></div></div>
+        <p class="teacher-row-detail">${a.finished} finished · ${a.started} started · ${a.notStarted} not started</p>
+        ${a.students.length ? `
+          <details class="homework-who">
+            <summary>Who</summary>
+            <table class="attempts-table"><thead><tr><th>Name</th><th>Done</th><th>Right</th></tr></thead><tbody>${rows}</tbody></table>
+          </details>` : ""}
+        <button class="text-button homework-remove" type="button" data-id="${escapeHtml(a.id)}">Remove</button>
+      </div>`;
+  }).join("");
+}
+
+$("homeworkForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  showError("");
+  try {
+    await api(`/api/classes/${encodeURIComponent(state.current.code)}/assignments`, {
+      method: "POST",
+      key: state.current.key,
+      body: { concept: $("homeworkTopic").value, count: Number($("homeworkCount").value), dueDate: $("homeworkDue").value }
+    });
+    openClass(state.current);
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+$("homeworkList").addEventListener("click", async (event) => {
+  const button = event.target.closest(".homework-remove");
+  if (!button || !confirm("Remove this homework? Students won't see it any more.")) return;
+  try {
+    await api(`/api/classes/${encodeURIComponent(state.current.code)}/assignments/${encodeURIComponent(button.dataset.id)}`, {
+      method: "DELETE",
+      key: state.current.key
+    });
+    openClass(state.current);
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+loadHomeworkTopics();
+
+// ------------------------------------------------------------
+// Printable progress reports
+// ------------------------------------------------------------
+//
+// One page per student (and a class summary first when printing all),
+// built from the report already on screen, then the browser's own print
+// dialog, which can also save as PDF.
+
+const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "–");
+
+function printStudentPage(student, className) {
+  const topics = student.topics.length
+    ? `<table><thead><tr><th>Topic</th><th>Answers</th><th>Mastery</th></tr></thead><tbody>${student.topics.map((t) =>
+        `<tr><td>${escapeHtml(topicName(t.concept))}</td><td>${t.attempts}</td><td>${percent(t.mastery)}</td></tr>`).join("")}</tbody></table>`
+    : "<p>No answers yet.</p>";
+
+  const mistakes = Object.entries(student.recentMistakes || {});
+  const twin = student.twinEffect.filter((e) => ["improved", "unchanged", "not_yet"].includes(e.status));
+  const recent = student.recentWork.length
+    ? `<table><thead><tr><th>Date</th><th>Topic</th><th>Result</th><th>Mistake</th></tr></thead><tbody>${student.recentWork.map((r) =>
+        `<tr><td>${escapeHtml(shortDate(r.createdAt))}</td><td>${escapeHtml(topicName(r.concept))}</td><td>${r.correct ? "Correct" : "Not yet"}</td><td>${escapeHtml(r.mistake || "–")}</td></tr>`).join("")}</tbody></table>`
+    : "<p>No answers yet.</p>";
+
+  return `
+    <section class="print-page">
+      <header class="print-head">
+        <div><p class="print-kicker">StudyTwin progress report</p><h1>${escapeHtml(student.name)}</h1></div>
+        <p>${escapeHtml(className)}<br>${escapeHtml(shortDate(new Date().toISOString()))}</p>
+      </header>
+      <div class="print-stats">
+        <div><strong>${student.answers}</strong><span>${student.answers === 1 ? "answer" : "answers"} checked</span></div>
+        <div><strong>${percent(student.recentAccuracy)}</strong><span>mastery, last 20 answers</span></div>
+        <div><strong>${student.hintsPerAnswer ?? "–"}</strong><span>hints per answer</span></div>
+        <div><strong>${escapeHtml(shortDate(student.lastActive))}</strong><span>last practised</span></div>
+      </div>
+      <h2>Topics</h2>${topics}
+      <h2>Mistakes</h2>
+      <p>${student.stuckOn ? `Working on: <strong>${escapeHtml(student.stuckOn.label)}</strong> (${student.stuckOn.count} of the last ${student.stuckOn.outOf} answers).` : "Not stuck on any one mistake right now."}</p>
+      ${mistakes.length ? `<p>In the last 20 answers: ${mistakes.map(([type, n]) => `${escapeHtml(topicName(type))} ×${n}`).join(", ")}.</p>` : ""}
+      ${student.cured.length ? `<p>Cured in a trap round: ${student.cured.map((c) => `${escapeHtml(c.label)}${c.status === "held" ? " (held at both check-ups)" : c.status === "slipped" ? " (came back since)" : ""}`).join(", ")}.</p>` : ""}
+      ${twin.length ? `<h2>Teaching the twin</h2><ul>${twin.map((e) =>
+        `<li>${escapeHtml(e.label)}: in ${percent(e.before.rate)} of answers before (${e.before.errors} of ${e.before.attempts}), ${percent(e.after.rate)} since (${e.after.errors} of ${e.after.attempts}).</li>`).join("")}</ul>` : ""}
+      <h2>Recent work</h2>${recent}
+      <p class="print-foot">Mastery counts answers where both the working and the final answer were right.</p>
+    </section>`;
+}
+
+function printClassPage(report) {
+  return `
+    <section class="print-page">
+      <header class="print-head">
+        <div><p class="print-kicker">StudyTwin class summary</p><h1>${escapeHtml(report.class.name)}</h1></div>
+        <p>${escapeHtml(shortDate(report.generatedAt))}</p>
+      </header>
+      <div class="print-stats">
+        <div><strong>${report.totals.students}</strong><span>${report.totals.students === 1 ? "student" : "students"}</span></div>
+        <div><strong>${report.totals.answers}</strong><span>${report.totals.answers === 1 ? "answer" : "answers"} checked</span></div>
+        <div><strong>${report.totals.stuck}</strong><span>stuck on a mistake</span></div>
+      </div>
+      <h2>Common mistakes</h2>
+      ${report.mistakes.length ? `<table><thead><tr><th>Mistake</th><th>Students</th><th>Stuck</th></tr></thead><tbody>${report.mistakes.map((m) =>
+        `<tr><td>${escapeHtml(m.label)}</td><td>${m.students} of ${report.totals.students}</td><td>${escapeHtml(m.stuck.join(", ") || "–")}</td></tr>`).join("")}</tbody></table>` : "<p>None yet.</p>"}
+      <h2>Students</h2>
+      <table><thead><tr><th>Name</th><th>Answers</th><th>Mastery</th><th>Stuck on</th></tr></thead><tbody>${report.students.map((s) =>
+        `<tr><td>${escapeHtml(s.name)}</td><td>${s.answers}</td><td>${percent(s.recentAccuracy)}</td><td>${escapeHtml(s.stuckOn?.label || "–")}</td></tr>`).join("")}</tbody></table>
+    </section>`;
+}
+
+function printReports(students, withClassPage) {
+  const report = state.report;
+  if (!report) return;
+  $("printArea").innerHTML = (withClassPage ? printClassPage(report) : "") +
+    students.map((s) => printStudentPage(s, report.class.name)).join("");
+  window.print();
+}
+
+$("printAllButton").addEventListener("click", () => printReports(state.report?.students || [], true));
+$("studentsTable").addEventListener("click", (event) => {
+  const button = event.target.closest(".print-student");
+  if (!button) return;
+  printReports((state.report?.students || []).filter((s) => s.id === button.dataset.id), false);
+});
+
+// Installable app: works offline for pages; answers still need the network (see sw.js).
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
 }

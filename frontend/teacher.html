@@ -14,10 +14,14 @@
       }
     } catch (e) {}
   </script>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#2847a8" />
+  <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261120-1" />
+  <link rel="stylesheet" href="./css/style.css?v=20261121-5" />
 </head>
 <body>
   <div class="teacher-page">
@@ -73,6 +77,7 @@
           <button id="refreshButton" class="ghost-button" type="button">Refresh</button>
           <button id="exportButton" class="ghost-button" type="button">Download answers (CSV)</button>
           <button id="exportBlindButton" class="ghost-button" type="button">Download for labelling</button>
+          <button id="printAllButton" class="ghost-button" type="button">Print reports</button>
         </div>
       </div>
 
@@ -98,6 +103,18 @@
         <p class="muted">Once students join and answer a few questions, this page shows who is stuck and on which mistake.</p>
       </div>
 
+      <div id="homeworkCard" class="profile-card">
+        <div class="card-title">Homework</div>
+        <form id="homeworkForm" class="homework-form">
+          <label>Topic<select id="homeworkTopic" required></select></label>
+          <label>Questions<select id="homeworkCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></label>
+          <label>Due<input id="homeworkDue" type="date" required /></label>
+          <button class="primary-button" type="submit">Set homework</button>
+        </form>
+        <p class="muted homework-note">Students see it when they open StudyTwin. Any practice on that topic after you set it counts.</p>
+        <div id="homeworkList"></div>
+      </div>
+
       <div id="stuckCard" class="profile-card hidden">
         <div class="card-title">Needs help now</div>
         <div id="stuckList"></div>
@@ -113,7 +130,7 @@
         <div class="card-title">Students</div>
         <div class="table-scroll">
           <table class="attempts-table teacher-table">
-            <thead><tr><th>Name</th><th>Answers</th><th>Last active</th><th>Recent mastery</th><th>Stuck on</th><th>Cured</th></tr></thead>
+            <thead><tr><th>Name</th><th>Answers</th><th>Last active</th><th>Recent mastery</th><th title="Hints asked for per answer, last 20 answers">Hints</th><th>Stuck on</th><th>Cured</th><th><span class="sr-only">Report</span></th></tr></thead>
             <tbody id="studentsTable"></tbody>
           </table>
         </div>
@@ -159,6 +176,9 @@
     </section>
   </div>
 
-  <script src="./js/teacher.js?v=20261120-1"></script>
+  <!-- Filled just before printing; hidden on screen. -->
+  <div id="printArea" class="print-area"></div>
+
+  <script src="./js/teacher.js?v=20261121-5"></script>
 </body>
 </html>
