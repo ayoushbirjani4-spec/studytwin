@@ -26,6 +26,7 @@
 
 const questionService = require("./questionService");
 const inequalities = require("./inequalities");
+const solutionChecker = require("./solutionChecker");
 const llmReviewService = require("./llmReviewService");
 
 const ML_API_URL =
@@ -2124,6 +2125,9 @@ function checkSteps({ questionId, work, reveal = false }) {
     if (inequalities.isInequalityQuestion(question)) {
         return inequalities.checkSteps(question, work, reveal);
     }
+    if (solutionChecker.handles(question)) {
+        return solutionChecker.checkSteps(question, work, reveal);
+    }
 
     const start = getQuestionStart(question);
     const lines = splitWorkSteps(String(work || "").replace(/\*\s*\(/g, "("))
@@ -2791,12 +2795,18 @@ async function analyzeAnswer({
 
     // Inequalities have their own checker: "x > 5" and "5 < x" are the same answer.
     const isInequality = inequalities.isInequalityQuestion(question);
+    // Quadratics and simultaneous equations: checked against their solutions.
+    const bySolution = solutionChecker.handles(question);
     const correct = isInequality
         ? inequalities.answersMatch(studentAnswer, question.answer)
+        : bySolution
+        ? solutionChecker.answersMatch(studentAnswer, question.answer, question)
         : isAnswerCorrect(studentAnswer, question.answer);
 
     const misconception = isInequality
         ? inequalities.diagnose(question, studentAnswer, work)
+        : bySolution
+        ? solutionChecker.diagnose(question, studentAnswer, work)
         : await detectMisconception(
             question,
             studentAnswer,

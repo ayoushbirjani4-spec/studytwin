@@ -61,7 +61,8 @@ async function logAttempt(entry) {
     liveHintsSeen: Number.isInteger(entry.liveHintsSeen) ? entry.liveHintsSeen : 0,
     // Hints the student asked for on the hint ladder before submitting.
     hintsUsed: Number.isInteger(entry.hintsUsed) ? entry.hintsUsed : 0,
-    createdAt: new Date()
+    // Only the demo class passes a time (its sample history); answers use now.
+    createdAt: entry.createdAt ? new Date(entry.createdAt) : new Date()
   };
 
   if (useMemoryStore()) {

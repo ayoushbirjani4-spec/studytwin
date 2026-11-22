@@ -600,6 +600,48 @@ const questions = [
         id: "iq_005", question: "Solve: -3x + 5 ≥ 14", concept: "inequalities", difficulty: 3, answer: "x ≤ -3",
         solution_steps: ["Subtract 5 from both sides", "-3x ≥ 9", "Divide both sides by -3 and flip the sign", "x ≤ -3"],
         explanation: "Subtract 5, then divide by -3. Dividing by a negative flips ≥ to ≤."
+    },
+
+
+    // ========================================================
+    // QUADRATICS (checked against their solutions)
+    // ========================================================
+
+    {
+        id: "qd_001", question: "Solve: x² - 5x + 6 = 0", concept: "quadratics", difficulty: 1, answer: "x = 2 or x = 3",
+        solution_steps: ["Factorise", "(x - 2)(x - 3) = 0", "One of the brackets must be 0", "x - 2 = 0 or x - 3 = 0", "x = 2 or x = 3"],
+        explanation: "Factorise, then set each bracket to 0. There are two solutions."
+    },
+    {
+        id: "qd_002", question: "Solve: x² + 2x - 15 = 0", concept: "quadratics", difficulty: 2, answer: "x = 3 or x = -5",
+        solution_steps: ["Factorise", "(x - 3)(x + 5) = 0", "x - 3 = 0 or x + 5 = 0", "x = 3 or x = -5"],
+        explanation: "Find two numbers that multiply to -15 and add to 2: 5 and -3."
+    },
+    {
+        id: "qd_003", question: "Solve: x² = 49", concept: "quadratics", difficulty: 3, answer: "x = 7 or x = -7",
+        solution_steps: ["Take the square root of both sides, remembering ±", "x = 7 or x = -7"],
+        explanation: "Both 7 and -7 square to 49."
+    },
+    {
+        id: "qd_004", question: "Solve: x² = 6x", concept: "quadratics", difficulty: 3, answer: "x = 0 or x = 6",
+        solution_steps: ["Subtract 6x from both sides", "x² - 6x = 0", "Factorise", "x(x - 6) = 0", "x = 0 or x = 6"],
+        explanation: "Dividing by x would lose x = 0. Move everything to one side and factorise."
+    },
+
+
+    // ========================================================
+    // SIMULTANEOUS EQUATIONS (checked against their solution)
+    // ========================================================
+
+    {
+        id: "sm_001", question: "Solve: x + y = 10 and x - y = 4", concept: "simultaneous_equations", difficulty: 2, answer: "x = 7, y = 3",
+        solution_steps: ["Add the two equations to remove y", "2x = 14", "x = 7", "Substitute into the first equation", "7 + y = 10", "y = 3"],
+        explanation: "Adding the equations removes y."
+    },
+    {
+        id: "sm_002", question: "Solve: 2x + y = 11 and x + 3y = 13", concept: "simultaneous_equations", difficulty: 3, answer: "x = 4, y = 3",
+        solution_steps: ["Make x the subject of the second equation", "x = 13 - 3y", "Substitute into the first equation", "2(13 - 3y) + y = 11", "26 - 5y = 11", "y = 3", "x = 4"],
+        explanation: "Write x in terms of y from one equation, then substitute it into the other."
     }
 
 ];

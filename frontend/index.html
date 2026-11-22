@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261122-6" />
+  <link rel="stylesheet" href="./css/style.css?v=20261122-7" />
 </head>
 <body>
   <!-- Line icons (lucide shapes), referenced with <use> -->
@@ -67,6 +67,9 @@
         <button id="dashboardButton" class="nav-item" type="button">
           <svg class="icon" aria-hidden="true"><use href="#i-chart"/></svg><span class="nav-label">Your progress</span>
         </button>
+        <label class="lang-picker"><span class="sr-only">Language</span>
+          <select id="langSelect" aria-label="Language"><option value="en">English</option><option value="es">Español</option><option value="hi">हिन्दी</option></select>
+        </label>
         <button id="themeButton" class="nav-item" type="button" aria-label="Switch to dark mode">
           <svg class="icon" aria-hidden="true"><use id="themeIcon" href="#i-moon"/></svg><span id="themeLabel" class="nav-label">Dark mode</span>
         </button>
@@ -103,6 +106,8 @@
         <div class="start-copy">
           <h2>Show your working. Fix the step that went wrong.</h2>
           <p>Write each line of an equation. StudyTwin checks every step as you go, explains the first mistake, and picks your next question from how you're doing.</p>
+
+          <p class="tour-link"><button id="tourButton" class="text-button" type="button">New here? See how it works in four steps</button></p>
 
           <div id="warmupBox" class="warmup-box">
             <div><strong>Daily warm-up</strong><span id="warmupText">3 quick questions picked from your own mistakes</span></div>
@@ -385,6 +390,17 @@
       <div id="globalError" class="error-banner hidden"></div>
     </main>
   </div>
-  <script src="./js/app.js?v=20261122-6"></script>
+  <!-- Guided tour (demo mode) -->
+  <div id="tourCard" class="tour-card hidden" role="dialog" aria-live="polite" aria-label="Guided tour">
+    <span id="tourStep" class="tour-step"></span>
+    <p id="tourText"></p>
+    <div class="tour-actions">
+      <button id="tourEnd" class="text-button" type="button">End tour</button>
+      <button id="tourNext" class="primary-button" type="button">Next</button>
+    </div>
+  </div>
+
+  <script src="./js/i18n.js?v=20261122-8"></script>
+  <script src="./js/app.js?v=20261122-7"></script>
 </body>
 </html>

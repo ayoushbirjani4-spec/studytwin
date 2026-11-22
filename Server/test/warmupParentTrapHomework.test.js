@@ -126,3 +126,23 @@ test("'cure a mistake' homework is finished when a trap round cures it", async (
   const started = progress([], [{ targetedPracticeType: "sign_error", concept: "distributive_property", createdAt: after, demonstratedCorrect: true }]);
   assert.deepEqual([started.finished, started.trapsAnswered], [false, 1]);
 });
+
+test("the demo class has six students with enough history to show every part of the teacher page", async (t) => {
+  memory(t);
+  // test/setup.js silences attempt logging; keep the demo's history here instead.
+  const logged = [];
+  t.mock.method(attemptLogStore, "logAttempt", async (row) => { logged.push({ ...row }); });
+  t.mock.method(attemptLogStore, "listAttempts", async ({ studentId }) => logged.filter((r) => r.studentId === studentId));
+  const { createDemoClass } = require("../Services/demoClass");
+  const classReportService = require("../Services/classReportService");
+  const created = await createDemoClass();
+  const report = await classReportService.buildClassReport(await classStore.get(created.code));
+
+  assert.equal(report.totals.students, 6);
+  assert.ok(report.totals.stuck >= 1, "someone is stuck");
+  assert.ok(report.mistakes.length >= 3, "several common mistakes");
+  assert.ok(report.evidence.twinEffect.some((e) => e.students > 0), "Twin Effect evidence");
+  assert.ok(report.evidence.cures.total >= 2, "cured mistakes");
+  assert.equal(report.assignments.length, 1, "homework already set");
+  assert.ok(report.students.every((s) => s.answers > 0));
+});

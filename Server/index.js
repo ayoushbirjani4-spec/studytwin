@@ -34,6 +34,7 @@ const llmReviewService = require("./Services/llmReviewService");
 const classStore = require("./Services/classStore");
 const classReportService = require("./Services/classReportService");
 const customQuestions = require("./Services/customQuestions");
+const demoClass = require("./Services/demoClass");
 const { createAnswerRateLimiter } = require("./middleware/rateLimit");
 const { serviceStatus } = require("./middleware/serviceErrors");
 
@@ -1324,6 +1325,16 @@ async function loadClassForTeacher(req, res) {
     }
     return classRecord;
 }
+
+// A sample class with six students and two weeks of practice, for demos.
+app.post("/api/demo/class", classCreateRateLimiter, async (req, res) => {
+    try {
+        const created = await demoClass.createDemoClass();
+        res.status(201).json({ success: true, ...created });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to make the sample class.");
+    }
+});
 
 app.post("/api/classes", classCreateRateLimiter, async (req, res) => {
     try {

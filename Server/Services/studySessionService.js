@@ -49,6 +49,8 @@ const MISCONCEPTION_LABELS = {
     combining_unlike_terms: "Combining unlike terms",
     wrong_equation: "Equation doesn't match the story",
     inequality_flip: "Inequality sign the wrong way round",
+    lost_a_solution: "Lost a solution",
+    invalid_step: "Step doesn't follow",
     invalid_transformation: "Invalid step",
     unknown_error: "Unknown error"
 };

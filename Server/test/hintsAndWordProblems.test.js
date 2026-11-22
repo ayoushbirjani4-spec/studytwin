@@ -96,3 +96,32 @@ test("inequalities: steps are checked by their solutions, and a missing flip is 
   const extraFlip = misconceptionService.checkSteps({ questionId: "iq_002", work: "3x - 4 ≤ 11\n3x ≥ 15" });
   assert.equal(extraFlip.steps[1].label, "inequality_flip");
 });
+
+test("quadratics: a step or answer that loses a solution is named", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  // qd_004: x² = 6x, so x = 0 or x = 6
+  const right = await misconceptionService.analyzeAnswer({ questionId: "qd_004", studentAnswer: "x = 6 or x = 0", work: "x² = 6x\nx² - 6x = 0\nx(x - 6) = 0\nx = 0 or x = 6" });
+  assert.equal(right.correct, true, "the solutions can come in any order");
+  assert.equal(right.misconception.detected, false);
+
+  const divided = await misconceptionService.analyzeAnswer({ questionId: "qd_004", studentAnswer: "6", work: "x² = 6x\nx = 6" });
+  assert.equal(divided.correct, false);
+  assert.equal(divided.misconception.type, "lost_a_solution");
+
+  const onlyPositive = await misconceptionService.analyzeAnswer({ questionId: "qd_003", studentAnswer: "7", work: "" });
+  assert.equal(onlyPositive.misconception.type, "lost_a_solution");
+
+  const live = misconceptionService.checkSteps({ questionId: "qd_001", work: "x² - 5x + 6 = 0\n(x - 2)(x - 3) = 0\n(x - 1)(x - 6) = 0" });
+  assert.deepEqual(live.steps.map((s) => s.status), ["given", "valid", "invalid"]);
+});
+
+test("simultaneous equations: every line must hold for the solution", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  // sm_002: 2x + y = 11 and x + 3y = 13, so x = 4, y = 3
+  const right = await misconceptionService.analyzeAnswer({ questionId: "sm_002", studentAnswer: "y = 3, x = 4", work: "x = 13 - 3y\n2(13 - 3y) + y = 11\n26 - 5y = 11\ny = 3\nx = 4" });
+  assert.equal(right.correct, true);
+  assert.equal(right.misconception.detected, false);
+
+  const slip = misconceptionService.checkSteps({ questionId: "sm_002", work: "x = 13 - 3y\n2(13 - 3y) + y = 11\n26 - 6y = 11" });
+  assert.deepEqual(slip.steps.map((s) => s.label), [null, null, "invalid_step"]);
+});

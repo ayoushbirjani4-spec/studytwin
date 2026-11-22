@@ -316,6 +316,8 @@ if (fromLink) {
   // Take the key out of the address bar so it isn't shown on a projector.
   history.replaceState(null, "", location.pathname);
   openClass(state.classes[0]);
+} else if (new URLSearchParams(location.search).get("demo") === "1") {
+  openDemoClass();
 } else if (state.classes.length) {
   openClass(state.classes[0]);
 } else {
@@ -786,3 +788,28 @@ $("studentsTable").addEventListener("click", async (event) => {
     showError(error.message);
   }
 });
+
+// ------------------------------------------------------------
+// Demo: a sample class to show StudyTwin without setting one up
+// ------------------------------------------------------------
+
+async function openDemoClass() {
+  showError("");
+  $("demoClassButton").disabled = true;
+  $("demoClassButton").textContent = "Making the sample class…";
+  try {
+    const created = await api("/api/demo/class", { method: "POST" });
+    const entry = { code: created.code, key: created.teacherKey, name: created.name };
+    rememberClass(entry);
+    history.replaceState(null, "", location.pathname);
+    openClass(entry);
+  } catch (error) {
+    show("setupPanel");
+    showError(error.message);
+  } finally {
+    $("demoClassButton").disabled = false;
+    $("demoClassButton").textContent = "Try it with a sample class";
+  }
+}
+
+$("demoClassButton").addEventListener("click", openDemoClass);

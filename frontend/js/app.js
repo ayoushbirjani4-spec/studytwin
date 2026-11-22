@@ -388,7 +388,9 @@ function renderQuestion(question) {
   const isStory = !/^(Solve|Simplify):/i.test(question.question || "");
   $("questionText").classList.toggle("is-story", isStory);
   // An inequality's answer is a range, like x > 5 (typing >= or <= is fine).
-  $("answerInput").placeholder = /[<>≤≥]/.test(question.question || "") ? "x > 5" : "4";
+  $("answerInput").placeholder = question.concept === "quadratics" ? "x = 2 or x = 3"
+    : question.concept === "simultaneous_equations" ? "x = 4, y = 3"
+    : /[<>≤≥]/.test(question.question || "") ? "x > 5" : "4";
   $("workInput").placeholder = isStory
     ? "Write an equation for the story first, then one step per line"
     : "Start by copying the question, then one step per line";
@@ -775,29 +777,17 @@ async function submitAnswer() {
 
   $("submitButton").textContent = "Checking…";
 
+  const payload = {
+    studentId: state.studentId,
+    question: { id: state.question.id },
+    studentAnswer,
+    work,
+    liveHintsSeen: liveSteps.hintsSeen.size,
+    hintsUsed: liveSteps.hintsUsed
+  };
+
   try {
-    const data = await api(
-      "/api/sessions/answer",
-      {
-        method: "POST",
-
-        body: JSON.stringify({
-          studentId: state.studentId,
-
-          question: {
-            id: state.question.id
-          },
-
-          studentAnswer,
-
-          work,
-
-          liveHintsSeen: liveSteps.hintsSeen.size,
-
-          hintsUsed: liveSteps.hintsUsed
-        })
-      }
-    );
+    const data = await api("/api/sessions/answer", { method: "POST", body: JSON.stringify(payload) });
 
     if (data.persisted !== true) {
       throw new Error(
@@ -809,6 +799,16 @@ async function submitAnswer() {
     // Refresh today's goal and streak (no need to wait for it).
     loadMotivation();
   } catch (error) {
+    // No connection: keep the answer on this phone and send it later.
+    if (error instanceof TypeError || !navigator.onLine) {
+      saveToOutbox(payload);
+      state.answered = true;
+      $("answerInput").disabled = true;
+      $("workInput").disabled = true;
+      $("submitButton").textContent = "Saved";
+      $("submitStatus").textContent = "You're offline. Your answer is saved on this phone and will be checked as soon as you're back online.";
+      return;
+    }
     showError(error.message ||
       "StudyTwin could not confirm that your answer was fully saved. Check your profile before retrying.");
 
@@ -2154,3 +2154,131 @@ function renderWarmup(warmup) {
 }
 
 $("warmupButton").addEventListener("click", () => startSession({ warmup: true }));
+
+// ------------------------------------------------------------
+// Offline answers
+// ------------------------------------------------------------
+//
+// An answer that can't be sent is kept on this phone (localStorage) and
+// sent, in order, when the connection is back. The server checks it then.
+
+const OUTBOX_KEY = "studytwin_outbox";
+
+function readOutbox() {
+  try {
+    const items = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]");
+    return Array.isArray(items) ? items : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeOutbox(items) {
+  try {
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(items.slice(-20)));
+  } catch {
+    // Storage full or blocked: nothing more can be done offline.
+  }
+}
+
+function saveToOutbox(payload) {
+  writeOutbox([...readOutbox(), { ...payload, savedAt: new Date().toISOString() }]);
+}
+
+let flushingOutbox = false;
+async function flushOutbox() {
+  const items = readOutbox();
+  if (flushingOutbox || !items.length || !navigator.onLine) return;
+  flushingOutbox = true;
+  let sent = 0;
+  try {
+    while (readOutbox().length) {
+      const [item, ...rest] = readOutbox();
+      const { savedAt, ...payload } = item;
+      let data = null;
+      try {
+        data = await api("/api/sessions/answer", { method: "POST", body: JSON.stringify(payload) });
+      } catch (error) {
+        if (error instanceof TypeError) break;   // still offline: try again later
+        // The server refused it (for example the question had expired): drop it.
+      }
+      writeOutbox(rest);
+      if (data) {
+        sent += 1;
+        // The answer still on screen: show its feedback now.
+        if (state.question?.id === payload.question.id) renderFeedback(data);
+      }
+    }
+  } finally {
+    flushingOutbox = false;
+  }
+  if (sent) {
+    $("submitStatus").textContent = `Back online: ${sent} saved answer${sent === 1 ? " was" : "s were"} sent and checked.`;
+    loadMotivation();
+  }
+}
+
+window.addEventListener("online", flushOutbox);
+flushOutbox();
+
+// ------------------------------------------------------------
+// Guided tour (demo mode): four steps on the real app
+// ------------------------------------------------------------
+
+const TOUR = [
+  {
+    text: "Students write each line of their working, and StudyTwin checks every line as they type. Here it has spotted a mistake in line 2.",
+    run: async () => {
+      $("conceptSelect").value = "distributive_property";
+      $("difficultySelect").value = "1";
+      await startSession();
+      // Write the question, then the classic slip: multiplying only the x.
+      const question = $("questionText").textContent.replace(/^Solve:\s*/, "");
+      const m = question.match(/^(\d+)\((\d*)x ([+-]) (\d+)\) = (\d+)$/);
+      $("workInput").value = m ? `${question}\n${Number(m[1]) * Number(m[2] || 1)}x ${m[3]} ${m[4]} = ${m[5]}` : question;
+      await runLiveCheck();
+    }
+  },
+  {
+    text: "Hints come in steps: first a nudge, then the mistake is named, then the correct line. Students who fix it themselves learn more.",
+    run: async () => { await nextHint(); await nextHint(); }
+  },
+  {
+    text: "Then they teach their twin. It makes the student's own mistakes, and they find the wrong line, fix it and explain why.",
+    run: async () => { await openTwin(); }
+  },
+  {
+    text: "Teachers see who is stuck on which mistake, set homework, print reports and run a class vote on the projector. Open the sample class to look around.",
+    run: async () => {},
+    finalLabel: "Open the sample class"
+  }
+];
+
+const tour = { index: -1 };
+
+async function showTourStep(index) {
+  tour.index = index;
+  const step = TOUR[index];
+  $("tourStep").textContent = `${index + 1} of ${TOUR.length}`;
+  $("tourText").textContent = step.text;
+  $("tourNext").textContent = step.finalLabel || "Next";
+  $("tourCard").classList.remove("hidden");
+  try {
+    await step.run();
+  } catch {
+    // The tour is a guide: if a step can't run (offline), the text still explains it.
+  }
+}
+
+function endTour() {
+  tour.index = -1;
+  $("tourCard").classList.add("hidden");
+}
+
+$("tourButton").addEventListener("click", () => showTourStep(0));
+$("tourEnd").addEventListener("click", endTour);
+$("tourNext").addEventListener("click", () => {
+  if (tour.index < TOUR.length - 1) return showTourStep(tour.index + 1);
+  window.open("/teacher.html?demo=1", "_blank", "noopener");
+  endTour();
+});

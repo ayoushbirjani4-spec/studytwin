@@ -224,6 +224,55 @@ const inequalityTemplate = (a, b, k, o) => {
     };
 };
 
+// Quadratics with whole-number roots, and simultaneous equations. These are
+// checked against their solutions (solutionChecker), not the linear rules.
+
+// "x² - 5x + 6"
+function quadraticText(b, c) {
+    const bx = b === 0 ? "" : b > 0 ? ` + ${term(b)}` : ` - ${term(-b)}`;
+    const cc = c === 0 ? "" : c > 0 ? ` + ${c}` : ` - ${-c}`;
+    return `x²${bx}${cc}`;
+}
+const factor = (r) => (r === 0 ? "x" : r > 0 ? `(x - ${r})` : `(x + ${-r})`);
+
+const quadraticFromRoots = (r1, r2) => ({
+    question: `Solve: ${quadraticText(-(r1 + r2), r1 * r2)} = 0`,
+    concept: "quadratics",
+    answer: `x = ${r1} or x = ${r2}`,
+    solution_steps: ["Factorise", `${factor(r1)}${factor(r2)} = 0`, "One of the brackets must be 0",
+        `${factor(r1).replace(/[()]/g, "")} = 0 or ${factor(r2).replace(/[()]/g, "")} = 0`, `x = ${r1} or x = ${r2}`],
+    explanation: "Factorise, then set each bracket to 0. A quadratic like this has two solutions."
+});
+
+const squareTemplate = (r) => ({
+    question: `Solve: x² = ${r * r}`,
+    concept: "quadratics",
+    answer: `x = ${r} or x = ${-r}`,
+    solution_steps: ["Take the square root of both sides, remembering ±", `x = ${r} or x = ${-r}`],
+    explanation: `Both ${r} and ${-r} square to ${r * r}, so there are two solutions.`
+});
+
+const xFactorTemplate = (k) => ({
+    question: `Solve: x² = ${k}x`,
+    concept: "quadratics",
+    answer: `x = 0 or x = ${k}`,
+    solution_steps: [`Subtract ${k}x from both sides`, `x² - ${k}x = 0`, "Factorise", `x(x - ${k}) = 0`, `x = 0 or x = ${k}`],
+    explanation: "Don't divide by x: that loses the solution x = 0. Move everything to one side and factorise."
+});
+
+const simultaneousTemplate = (a, b, x, y) => {
+    const first = `${term(a)} + y = ${a * x + y}`;
+    const second = `x + ${b}y = ${x + b * y}`;
+    return {
+        question: `Solve: ${first} and ${second}`,
+        concept: "simultaneous_equations",
+        answer: `x = ${x}, y = ${y}`,
+        solution_steps: ["Make x the subject of the second equation", `x = ${x + b * y} - ${b}y`,
+            "Substitute into the first equation and solve for y", `y = ${y}`, "Substitute y back in", `x = ${x}`],
+        explanation: "Use one equation to write x in terms of y, substitute it into the other, then solve."
+    };
+};
+
 function simplifyQuestion(terms, xTotal, constantTotal) {
     const text = terms
         .map((t, i) => (i === 0 ? t : t.startsWith("-") ? `- ${t.slice(1)}` : `+ ${t}`))
@@ -312,6 +361,34 @@ const TEMPLATES = {
         build: (a, k, o) => inequalityTemplate(-a, 0, k, o) },
     iq4: { concept: "inequalities", difficulty: 3, params: [[2, 6], [1, 12], [1, 9], [0, 3]],   // -a·x + b > c: flip
         build: (a, b, k, o) => inequalityTemplate(-a, b, k, o) },
+
+    // Quadratics
+    qd1: { concept: "quadratics", difficulty: 1, params: [[1, 9], [1, 9]], valid: (r1, r2) => r1 < r2,   // two positive roots
+        build: quadraticFromRoots },
+    qd2: { concept: "quadratics", difficulty: 2, params: [[1, 9], [1, 9]], valid: (r1, r2) => r1 !== r2, // one negative root
+        build: (r1, r2) => quadraticFromRoots(r1, -r2) },
+    qd3: { concept: "quadratics", difficulty: 3, params: [[2, 12]], build: squareTemplate },              // x² = 49
+    qd4: { concept: "quadratics", difficulty: 3, params: [[2, 9]], build: xFactorTemplate },              // x² = 5x
+
+    // Simultaneous equations: a·x + y = c and x + b·y = d
+    sm3: { concept: "simultaneous_equations", difficulty: 2, params: [[2, 5], [1, 9], [1, 9]],     // x + y = s and a·x + y = t: subtract
+        build: (a, x, y) => ({
+            question: `Solve: x + y = ${x + y} and ${a}x + y = ${a * x + y}`,
+            concept: "simultaneous_equations",
+            answer: `x = ${x}, y = ${y}`,
+            solution_steps: ["Subtract the first equation from the second to remove y", `${a - 1 === 1 ? "" : a - 1}x = ${(a - 1) * x}`, `x = ${x}`, "Substitute into the first equation", `${x} + y = ${x + y}`, `y = ${y}`],
+            explanation: "Both equations have + y, so subtracting one from the other removes y."
+        }) },
+    sm1: { concept: "simultaneous_equations", difficulty: 1, params: [[1, 1], [1, 1], [1, 9], [1, 9]],
+        valid: (a, b, x, y) => x !== y,
+        build: (a, b, x, y) => ({
+            ...simultaneousTemplate(1, 1, x, y),
+            question: `Solve: x + y = ${x + y} and x - y = ${x - y}`,
+            solution_steps: ["Add the two equations to remove y", `2x = ${2 * x}`, `x = ${x}`, "Substitute into the first equation", `${x} + y = ${x + y}`, `y = ${y}`],
+            explanation: "Adding the equations removes y. Find x, then substitute it back to find y."
+        }) },
+    sm2: { concept: "simultaneous_equations", difficulty: 3, params: [[2, 5], [2, 5], [1, 8], [1, 8]],
+        build: simultaneousTemplate },
 
     // Word problems
     wp1: { concept: "word_problems", difficulty: 1, params: [[2, 5], [2, 6], [2, 12]],

@@ -69,6 +69,11 @@ test("every topic and level gets questions in the bank's style", () => {
 test("equation answers are whole numbers and simplify answers are tidy", () => {
   for (const q of sampleQuestions()) {
     if (q.question.startsWith("Solve") || q.equation) {
+      // Quadratics and simultaneous equations have several values ("x = 2 or x = 3").
+      if (["quadratics", "simultaneous_equations"].includes(q.concept)) {
+        assert.ok((q.answer.match(/-?\d+/g) || []).every((n) => Number.isInteger(Number(n))), q.id);
+        continue;
+      }
       const value = q.concept === "inequalities" ? q.answer.replace(/^x [<>≤≥] /, "") : q.answer;
       assert.ok(Number.isInteger(Number(value)), `${q.id}: ${q.answer}`);
     } else {
