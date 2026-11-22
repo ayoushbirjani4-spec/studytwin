@@ -40,7 +40,7 @@ function answerFor(questionId, mistake = null) {
   const start = question.equation || question.question.replace(/^(Solve|Simplify):\s*/, "");
   return {
     studentAnswer: question.answer,
-    work: [start, ...question.solution_steps.filter((s) => s.includes("="))].join("\n")
+    work: [start, ...question.solution_steps.filter((s) => /[=<>≤≥]/.test(s))].join("\n")
   };
 }
 

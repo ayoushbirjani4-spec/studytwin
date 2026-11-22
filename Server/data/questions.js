@@ -569,6 +569,37 @@ const questions = [
         equation: "6x = 2x + 20", concept: "word_problems", difficulty: 3, answer: "5",
         solution_steps: ["Write an equation for the story", "6x = 2x + 20", "Subtract 2x from both sides", "4x = 20", "Divide both sides by 4", "x = 5"],
         explanation: "Let x be the number of visits: Gym A costs 6x and Gym B costs 2x + 20. Set them equal."
+    },
+
+
+    // ========================================================
+    // INEQUALITIES
+    // ========================================================
+
+    {
+        id: "iq_001", question: "Solve: x + 4 > 9", concept: "inequalities", difficulty: 1, answer: "x > 5",
+        solution_steps: ["Subtract 4 from both sides", "x > 5"],
+        explanation: "Solve it like an equation, keeping the sign the same way round."
+    },
+    {
+        id: "iq_002", question: "Solve: 3x - 4 ≤ 11", concept: "inequalities", difficulty: 2, answer: "x ≤ 5",
+        solution_steps: ["Add 4 to both sides", "3x ≤ 15", "Divide both sides by 3", "x ≤ 5"],
+        explanation: "Dividing by 3, a positive number, keeps the sign the same way round."
+    },
+    {
+        id: "iq_003", question: "Solve: 2x + 7 ≥ 1", concept: "inequalities", difficulty: 2, answer: "x ≥ -3",
+        solution_steps: ["Subtract 7 from both sides", "2x ≥ -6", "Divide both sides by 2", "x ≥ -3"],
+        explanation: "The answer can be negative; the sign only flips when you divide by a negative."
+    },
+    {
+        id: "iq_004", question: "Solve: -2x < 8", concept: "inequalities", difficulty: 3, answer: "x > -4",
+        solution_steps: ["Divide both sides by -2 and flip the sign", "x > -4"],
+        explanation: "Dividing by -2, a negative number, flips the sign: < becomes >."
+    },
+    {
+        id: "iq_005", question: "Solve: -3x + 5 ≥ 14", concept: "inequalities", difficulty: 3, answer: "x ≤ -3",
+        solution_steps: ["Subtract 5 from both sides", "-3x ≥ 9", "Divide both sides by -3 and flip the sign", "x ≤ -3"],
+        explanation: "Subtract 5, then divide by -3. Dividing by a negative flips ≥ to ≤."
     }
 
 ];

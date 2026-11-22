@@ -48,6 +48,7 @@ const MISCONCEPTION_LABELS = {
     arithmetic_slip: "Arithmetic slip",
     combining_unlike_terms: "Combining unlike terms",
     wrong_equation: "Equation doesn't match the story",
+    inequality_flip: "Inequality sign the wrong way round",
     invalid_transformation: "Invalid step",
     unknown_error: "Unknown error"
 };

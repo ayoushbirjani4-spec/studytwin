@@ -33,7 +33,7 @@ function correctWork(question) {
   const start = question.equation || question.question.replace(/^(Solve|Simplify):\s*/, "");
   if (question.question.startsWith("Simplify")) return `${start}\n${question.answer}`;
   // A word problem's steps repeat its equation as the first line.
-  const steps = question.solution_steps.filter((s) => s.includes("=") && s !== question.equation);
+  const steps = question.solution_steps.filter((s) => /[=<>≤≥]/.test(s) && s !== question.equation);
   return [start, ...steps].join("\n");
 }
 
@@ -69,7 +69,8 @@ test("every topic and level gets questions in the bank's style", () => {
 test("equation answers are whole numbers and simplify answers are tidy", () => {
   for (const q of sampleQuestions()) {
     if (q.question.startsWith("Solve") || q.equation) {
-      assert.ok(Number.isInteger(Number(q.answer)), `${q.id}: ${q.answer}`);
+      const value = q.concept === "inequalities" ? q.answer.replace(/^x [<>≤≥] /, "") : q.answer;
+      assert.ok(Number.isInteger(Number(value)), `${q.id}: ${q.answer}`);
     } else {
       assert.match(q.answer, /^\d*x( [+-] \d+)?$/, q.id);
       assert.doesNotMatch(q.question, /\b1x/, `${q.id} writes x, not 1x`);

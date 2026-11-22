@@ -201,6 +201,29 @@ function wordProblem(build, describe) {
     };
 }
 
+// Inequalities: a·x + b (op) c with solution "x (op) k". `o` picks the sign.
+const INEQUALITY_SIGNS = ["<", ">", "≤", "≥"];
+const FLIPPED = { "<": ">", ">": "<", "≤": "≥", "≥": "≤" };
+const inequalityTemplate = (a, b, k, o) => {
+    const op = INEQUALITY_SIGNS[o];
+    const c = a * k + b;
+    const solved = a < 0 ? FLIPPED[op] : op;
+    const steps = [];
+    if (b !== 0) steps.push(`Subtract ${b} from both sides`, `${term(a)} ${op} ${c - b}`);
+    if (a !== 1) {
+        steps.push(a < 0 ? `Divide both sides by ${a} and flip the sign` : `Divide both sides by ${a}`, `x ${solved} ${k}`);
+    }
+    return {
+        question: `Solve: ${b === 0 ? term(a) : linear(a, b)} ${op} ${c}`,
+        concept: "inequalities",
+        answer: `x ${solved} ${k}`,
+        solution_steps: steps,
+        explanation: a < 0
+            ? `Solve it like an equation, but you divide by ${a}, a negative number, so the sign flips.`
+            : "Solve it like an equation, keeping the inequality sign the same way round."
+    };
+};
+
 function simplifyQuestion(terms, xTotal, constantTotal) {
     const text = terms
         .map((t, i) => (i === 0 ? t : t.startsWith("-") ? `- ${t.slice(1)}` : `+ ${t}`))
@@ -279,6 +302,16 @@ const TEMPLATES = {
     fr3: { concept: "equations_with_fractions", difficulty: 3, params: [[1, 9], [2, 6], [2, 9]],
         valid: (b, d, c) => c * d > b,
         build: bracketFractionTemplate },
+
+    // Inequalities (the last number picks <, >, ≤ or ≥)
+    iq1: { concept: "inequalities", difficulty: 1, params: [[1, 12], [1, 15], [0, 3]],          // x + b > c
+        build: (b, k, o) => inequalityTemplate(1, b, k, o) },
+    iq2: { concept: "inequalities", difficulty: 2, params: [[2, 6], [1, 12], [1, 9], [0, 3]],   // a·x + b > c
+        build: (a, b, k, o) => inequalityTemplate(a, b, k, o) },
+    iq3: { concept: "inequalities", difficulty: 3, params: [[2, 9], [1, 9], [0, 3]],            // -a·x > c: flip
+        build: (a, k, o) => inequalityTemplate(-a, 0, k, o) },
+    iq4: { concept: "inequalities", difficulty: 3, params: [[2, 6], [1, 12], [1, 9], [0, 3]],   // -a·x + b > c: flip
+        build: (a, b, k, o) => inequalityTemplate(-a, b, k, o) },
 
     // Word problems
     wp1: { concept: "word_problems", difficulty: 1, params: [[2, 5], [2, 6], [2, 12]],

@@ -387,6 +387,8 @@ function renderQuestion(question) {
   // A word problem is a story: smaller text, and the working starts with the equation.
   const isStory = !/^(Solve|Simplify):/i.test(question.question || "");
   $("questionText").classList.toggle("is-story", isStory);
+  // An inequality's answer is a range, like x > 5 (typing >= or <= is fine).
+  $("answerInput").placeholder = /[<>≤≥]/.test(question.question || "") ? "x > 5" : "4";
   $("workInput").placeholder = isStory
     ? "Write an equation for the story first, then one step per line"
     : "Start by copying the question, then one step per line";

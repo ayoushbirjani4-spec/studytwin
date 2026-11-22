@@ -75,3 +75,24 @@ test("word problems get twin lessons from their equation", () => {
   assert.equal(lesson.lines[0], "4(x + 2) = 36");
   assert.equal(lesson.question, question.question, "the twin shows the story");
 });
+
+test("inequalities: steps are checked by their solutions, and a missing flip is named", async (t) => {
+  t.mock.method(llmReviewService, "reviewSubmission", async () => null);
+  // iq_005: -3x + 5 ≥ 14, so x ≤ -3
+  const right = await misconceptionService.analyzeAnswer({ questionId: "iq_005", studentAnswer: "x <= -3", work: "-3x + 5 >= 14\n-3x >= 9\nx <= -3" });
+  assert.equal(right.correct, true, "typing >= and <= is fine");
+  assert.equal(right.misconception.detected, false);
+  assert.equal((await misconceptionService.analyzeAnswer({ questionId: "iq_005", studentAnswer: "-3 ≥ x", work: "x ≤ -3" })).correct, true, "the answer can be written either way round");
+
+  const noFlip = await misconceptionService.analyzeAnswer({ questionId: "iq_005", studentAnswer: "x ≥ -3", work: "-3x + 5 ≥ 14\n-3x ≥ 9\nx ≥ -3" });
+  assert.equal(noFlip.correct, false);
+  assert.equal(noFlip.misconception.type, "inequality_flip");
+  assert.equal(noFlip.misconception.correctStep, "x ≤ -3");
+
+  // Other mistakes are named by the equation rules.
+  const inverse = misconceptionService.checkSteps({ questionId: "iq_005", work: "-3x + 5 ≥ 14\n-3x ≥ 19" });
+  assert.deepEqual(inverse.steps.map((s) => s.label), [null, "wrong_inverse_op"]);
+  // A flip that isn't needed is caught too.
+  const extraFlip = misconceptionService.checkSteps({ questionId: "iq_002", work: "3x - 4 ≤ 11\n3x ≥ 15" });
+  assert.equal(extraFlip.steps[1].label, "inequality_flip");
+});

@@ -25,6 +25,7 @@
 // ============================================================
 
 const questionService = require("./questionService");
+const inequalities = require("./inequalities");
 const llmReviewService = require("./llmReviewService");
 
 const ML_API_URL =
@@ -2120,6 +2121,9 @@ function checkSteps({ questionId, work, reveal = false }) {
     if (!question) {
         return null;
     }
+    if (inequalities.isInequalityQuestion(question)) {
+        return inequalities.checkSteps(question, work, reveal);
+    }
 
     const start = getQuestionStart(question);
     const lines = splitWorkSteps(String(work || "").replace(/\*\s*\(/g, "("))
@@ -2785,10 +2789,15 @@ async function analyzeAnswer({
         }
     };
 
-    const correct = isAnswerCorrect(studentAnswer, question.answer);
+    // Inequalities have their own checker: "x > 5" and "5 < x" are the same answer.
+    const isInequality = inequalities.isInequalityQuestion(question);
+    const correct = isInequality
+        ? inequalities.answersMatch(studentAnswer, question.answer)
+        : isAnswerCorrect(studentAnswer, question.answer);
 
-    const misconception =
-        await detectMisconception(
+    const misconception = isInequality
+        ? inequalities.diagnose(question, studentAnswer, work)
+        : await detectMisconception(
             question,
             studentAnswer,
             work,
@@ -3001,6 +3010,11 @@ function getMisconceptionContribution(
 // ============================================================
 
 module.exports = {
+
+    // Used by the inequality checker.
+    classifyStepError,
+    splitWorkSteps,
+    STEP_LABELS,
 
     normalizeAnswer,
 
