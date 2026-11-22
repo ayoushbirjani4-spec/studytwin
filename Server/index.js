@@ -1406,11 +1406,22 @@ app.get("/api/classes/:code/export.csv", stepCheckRateLimiter, async (req, res) 
 //
 // ============================================================
 
+// Mistakes a trap round can be set for.
+const HOMEWORK_MISTAKES = [
+    "failed_to_distribute", "sign_error", "wrong_inverse_op", "one_sided_op",
+    "combining_unlike_terms", "arithmetic_slip", "inequality_flip"
+];
+
 app.post("/api/classes/:code/assignments", stepCheckRateLimiter, async (req, res) => {
     try {
         const classRecord = await loadClassForTeacher(req, res);
         if (!classRecord) return;
-        const { concept, count, dueDate } = req.body || {};
+        const { concept, dueDate, misconceptionType } = req.body || {};
+        // "Cure a mistake" homework is one trap round, so it counts as 1.
+        const count = misconceptionType ? 1 : req.body?.count;
+        if (misconceptionType && !HOMEWORK_MISTAKES.includes(misconceptionType)) {
+            return res.status(400).json({ success: false, error: "Choose a mistake StudyTwin can set traps for." });
+        }
         const due = /^\d{4}-\d{2}-\d{2}$/.test(String(dueDate)) ? new Date(`${dueDate}T00:00:00Z`) : null;
         const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z");
         const classQuestionsTopic = concept === customQuestions.CONCEPT && (classRecord.questions || []).length > 0;
@@ -1429,6 +1440,7 @@ app.post("/api/classes/:code/assignments", stepCheckRateLimiter, async (req, res
             concept,
             count,
             dueDate,
+            ...(misconceptionType ? { misconceptionType } : {}),
             createdAt: new Date().toISOString()
         };
         await classStore.addAssignment(classRecord.code, assignment);
@@ -1446,6 +1458,64 @@ app.delete("/api/classes/:code/assignments/:id", stepCheckRateLimiter, async (re
         res.json({ success: true });
     } catch (error) {
         sendServiceError(res, error, "Unable to remove the homework.");
+    }
+});
+
+
+// ============================================================
+// PARENT LINK
+// ============================================================
+//
+// POST /api/classes/:code/parent-link   teacher: { student } (the short id) -> { token }
+// POST /api/parent                      { token } -> that student's report
+//
+// The token is "<studentId>.<secret>"; only a hash of the secret is kept on
+// the student, so a new link replaces (and switches off) the old one. It is
+// sent in the request body, not the URL, so it stays out of server logs.
+//
+// ============================================================
+
+const hashSecret = (secret) => require("node:crypto").createHash("sha256").update(String(secret)).digest("hex");
+
+app.post("/api/classes/:code/parent-link", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const shortId = String(req.body?.student || "");
+        const member = shortId.length >= 6
+            ? (await studentStore.listByClass(classRecord.code)).find((s) => s.studentId.endsWith(shortId))
+            : null;
+        if (!member) {
+            return res.status(404).json({ success: false, error: "That student isn't in this class." });
+        }
+        const student = await studentStore.get(member.studentId);
+        const secret = require("node:crypto").randomBytes(18).toString("base64url");
+        student.parentKeyHash = hashSecret(secret);
+        await studentStore.save(student);
+        res.json({ success: true, token: `${student.studentId}.${secret}`, name: student.displayName || "Student" });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to make a parent link.");
+    }
+});
+
+app.post("/api/parent", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const token = String(req.body?.token || "");
+        const dot = token.lastIndexOf(".");
+        const student = dot > 0 ? await studentStore.get(token.slice(0, dot)) : null;
+        const expected = student?.parentKeyHash ? Buffer.from(student.parentKeyHash, "hex") : null;
+        const given = Buffer.from(hashSecret(token.slice(dot + 1)), "hex");
+        if (!expected || expected.length !== given.length || !require("node:crypto").timingSafeEqual(expected, given)) {
+            return res.status(404).json({ success: false, error: "This link doesn't work any more. Ask the teacher for a new one." });
+        }
+        const classRecord = student.classCode ? await classStore.get(student.classCode) : null;
+        res.json({
+            success: true,
+            className: classRecord?.name || "",
+            student: await classReportService.buildStudentReport(student)
+        });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to load the report.");
     }
 });
 

@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261122-4" />
+  <link rel="stylesheet" href="./css/style.css?v=20261122-6" />
 </head>
 <body>
   <div class="teacher-page">
@@ -120,6 +120,7 @@
         <div class="card-title">Homework</div>
         <form id="homeworkForm" class="homework-form">
           <label>Topic<select id="homeworkTopic" required></select></label>
+          <label>Goal<select id="homeworkMistake"><option value="">Practise the topic</option><option value="failed_to_distribute">Cure: failed to distribute</option><option value="sign_error">Cure: sign error</option><option value="wrong_inverse_op">Cure: wrong inverse operation</option><option value="one_sided_op">Cure: one-sided operation</option><option value="combining_unlike_terms">Cure: combining unlike terms</option><option value="arithmetic_slip">Cure: arithmetic slip</option><option value="inequality_flip">Cure: inequality sign flip</option></select></label>
           <label>Questions<select id="homeworkCount"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></label>
           <label>Due<input id="homeworkDue" type="date" required /></label>
           <button class="primary-button" type="submit">Set homework</button>
@@ -141,6 +142,7 @@
 
       <div id="studentsCard" class="profile-card hidden">
         <div class="card-title">Students</div>
+        <div id="parentLinkBox" class="parent-link-box hidden" role="status"></div>
         <div class="table-scroll">
           <table class="attempts-table teacher-table">
             <thead><tr><th>Name</th><th>Answers</th><th>Last active</th><th>Recent mastery</th><th title="Hints asked for per answer, last 20 answers">Hints</th><th>Stuck on</th><th>Cured</th><th><span class="sr-only">Report</span></th></tr></thead>
@@ -192,6 +194,7 @@
   <!-- Filled just before printing; hidden on screen. -->
   <div id="printArea" class="print-area"></div>
 
-  <script src="./js/teacher.js?v=20261122-4"></script>
+  <script src="./js/report.js?v=20261122-6"></script>
+  <script src="./js/teacher.js?v=20261122-6"></script>
 </body>
 </html>

@@ -173,6 +173,47 @@ function gradeCheckup(student, questionId, misconceptionType, demonstratedCorrec
     return null;
 }
 
+// ------------------------------------------------------------
+// Daily warm-up: three quick questions from the student's own mistakes
+// ------------------------------------------------------------
+//
+// First any surprise check-up that is due, then a trap question for each
+// of the student's mistakes (most recent first, one per mistake), then
+// mixed questions if there aren't three. The day is the student's own
+// date, sent by the browser, so "today" matches their streak.
+
+const WARMUP_SIZE = 3;
+const NOT_WARMUP_MISTAKES = ["unknown_error", "invalid_transformation", "incomplete_solution", "wrong_equation"];
+
+function planWarmup(student) {
+    const ids = [];
+    const checkup = serveCheckup(student, null, []);
+    if (checkup) ids.push(checkup.id);
+
+    const mistakes = Object.entries(student.concepts || {})
+        .flatMap(([concept, state]) => Object.entries(state.misconceptionsByType || {})
+            .map(([type, record]) => ({ type, concept, count: record?.count ?? record, lastSeen: record?.lastSeen || "" })))
+        .filter((m) => !NOT_WARMUP_MISTAKES.includes(m.type) && m.count > 0)
+        .sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)) || b.count - a.count);
+    for (const mistake of mistakes) {
+        if (ids.length >= WARMUP_SIZE) break;
+        const question = trapQuestion(mistake.type, mistake.concept, ids);
+        if (question && !ids.includes(question.id)) ids.push(question.id);
+    }
+    while (ids.length < WARMUP_SIZE) {
+        const question = questionService.getNextMixedQuestion({ recentQuestionIds: ids });
+        if (!question || ids.includes(question.id)) break;
+        ids.push(question.id);
+    }
+    return ids;
+}
+
+function warmupSummary(warmup) {
+    return warmup
+        ? { date: warmup.date, done: warmup.done, total: warmup.questionIds.length, complete: warmup.done >= warmup.questionIds.length }
+        : null;
+}
+
 // The teacher's own questions, in the teacher's order: the one after
 // `currentId`, or when starting, the first not answered recently.
 async function nextClassQuestion(student, currentId, recentQuestionIds = []) {
@@ -188,8 +229,25 @@ async function nextClassQuestion(student, currentId, recentQuestionIds = []) {
 
 // Homework progress: answers on the assignment's topic since it was set.
 // Any practice on that topic counts, so students needn't start it a special way.
-function homeworkProgress(assignment, attempts = []) {
+function homeworkProgress(assignment, attempts = [], student = null) {
     const since = new Date(assignment.createdAt);
+
+    // "Cure a mistake" homework: finished once a trap round cures it.
+    if (assignment.misconceptionType) {
+        const traps = attempts.filter(row =>
+            row.targetedPracticeType === assignment.misconceptionType &&
+            row.concept === assignment.concept && new Date(row.createdAt) >= since);
+        const cured = (student?.curedMistakes || []).some(item =>
+            item.type === assignment.misconceptionType && item.concept === assignment.concept &&
+            new Date(item.curedAt) >= since);
+        return {
+            done: cured ? 1 : 0,
+            correct: traps.filter(row => row.demonstratedCorrect).length,
+            finished: cured,
+            trapsAnswered: traps.length
+        };
+    }
+
     const answers = attempts
         .filter(row => row.concept === assignment.concept && new Date(row.createdAt) >= since)
         .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
@@ -834,6 +892,17 @@ async function recordAnswer({
                 : null
     });
 
+    // Daily warm-up: the next of its questions, until all three are done.
+    let warmupResult = null;
+    const warm = student.warmup;
+    if (warm && warm.done < warm.questionIds.length && warm.questionIds[warm.done] === realQuestion.id) {
+        warm.done += 1;
+        if (warm.done < warm.questionIds.length) {
+            nextQuestion = questionService.findQuestionById(warm.questionIds[warm.done]) || nextQuestion;
+        }
+        warmupResult = warmupSummary(warm);
+    }
+
     if (nextQuestion) {
         issueQuestion(student, nextQuestion.id);
     }
@@ -954,6 +1023,9 @@ async function recordAnswer({
 
         // Only shown after answering, so the check-up stays a surprise.
         checkup: checkupResult,
+
+        // Progress through today's warm-up, if this answer was part of it.
+        warmup: warmupResult,
 
         targetedPractice: targetedPracticeForAnswer
             ? {
@@ -1082,7 +1154,11 @@ async function startSession({
 
     misconceptionType = null,
 
-    resetToken = null
+    resetToken = null,
+
+    // Daily warm-up, and the student's own date ("2026-11-22").
+    warmup = false,
+    localDate = null
 
 }) {
 
@@ -1147,7 +1223,14 @@ async function startSession({
     // Select first question
     // --------------------------------------------------------
 
-    const question = concept === customQuestions.CONCEPT
+    if (warmup) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(localDate))) throw requestError("A date is needed for the warm-up.");
+        student.warmup = { date: localDate, questionIds: planWarmup(student), done: 0 };
+    }
+
+    const question = warmup
+        ? questionService.findQuestionById(student.warmup.questionIds[0])
+        : concept === customQuestions.CONCEPT
         ? await nextClassQuestion(student, null, state.recentQuestionIds)
         : misconceptionType
         ? trapQuestion(misconceptionType, concept, state.recentQuestionIds)
@@ -1225,6 +1308,8 @@ async function startSession({
         targetedPractice: misconceptionType
             ? trapRoundSummary(student.targetedPractice)
             : null,
+
+        warmup: warmup ? warmupSummary(student.warmup) : null,
 
         question:
             questionService.toStudentQuestion(question)
@@ -1848,7 +1933,10 @@ async function getStudentProfile(studentId) {
             : null,
 
         // Homework set by their teacher, with progress from their answers.
-        homework: homework.map(assignment => ({ ...assignment, ...homeworkProgress(assignment, trendAttemptLogs) })),
+        homework: homework.map(assignment => ({ ...assignment, ...homeworkProgress(assignment, trendAttemptLogs, student) })),
+
+        // The latest daily warm-up; the browser compares its date with today.
+        warmup: warmupSummary(student.warmup),
 
         // How far the twin has come across the student's own mistakes.
         twinProgress: twinService.summariseTwinProgress(commonMistakes, student.twin, null),

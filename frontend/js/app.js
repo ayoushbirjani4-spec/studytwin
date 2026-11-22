@@ -409,7 +409,11 @@ function renderQuestion(question) {
   $("feedbackPanel").classList.add("hidden");
 
   const trap = state.targetedPractice?.active ? state.targetedPractice : null;
-  if (trap) {
+  const warm = state.warmup && !state.warmup.complete ? state.warmup : null;
+  if (warm) {
+    $("progressBar").style.width = `${(warm.done / warm.total) * 100}%`;
+    $("progressText").textContent = `Warm-up ${warm.done + 1} of ${warm.total}`;
+  } else if (trap) {
     // A trap round fills up with the streak, not the question count.
     const goal = trap.goal || 5;
     $("progressBar").style.width = `${Math.min(100, ((trap.streak || 0) / goal) * 100)}%`;
@@ -464,7 +468,7 @@ async function loadConcepts() {
   }
 }
 
-async function startSession({ misconceptionType = null } = {}) {
+async function startSession({ misconceptionType = null, warmup = false } = {}) {
   const concept = $("conceptSelect").value;
   const difficulty =
     Number($("difficultySelect").value);
@@ -486,7 +490,8 @@ async function startSession({ misconceptionType = null } = {}) {
         studentId: state.studentId,
         concept,
         difficulty,
-        ...(misconceptionType ? { misconceptionType } : {})
+        ...(misconceptionType ? { misconceptionType } : {}),
+        ...(warmup ? { warmup: true, localDate: localToday() } : {})
       })
     });
 
@@ -499,6 +504,7 @@ async function startSession({ misconceptionType = null } = {}) {
     state.concept = data.concept;
     state.difficulty = data.difficulty;
     state.targetedPractice = data.targetedPractice || null;
+    state.warmup = data.warmup || null;
     state.questionNumber = 1;
 
     state.stats = {
@@ -685,6 +691,7 @@ function renderFeedback(data) {
   $("submitStatus").textContent = "";
 
   const targetedResult = $("targetedPracticeResult");
+  if (data.warmup) state.warmup = data.warmup;
   if (data.targetedPractice) {
     const target = data.targetedPractice;
     state.targetedPractice = target;
@@ -707,6 +714,11 @@ function renderFeedback(data) {
     if (target.completed) {
       $("nextButton").textContent = "Return to mixed practice";
     }
+  } else if (data.warmup?.complete) {
+    state.warmup = data.warmup;
+    targetedResult.textContent = "Warm-up done for today. Come back tomorrow for the next one.";
+    targetedResult.classList.add("is-cured");
+    targetedResult.classList.remove("hidden");
   } else if (data.checkup && data.checkup.result !== "unsettled") {
     // A surprise check-up on a cured mistake, revealed only now.
     const c = data.checkup;
@@ -827,6 +839,11 @@ async function continueToNext() {
 
   if (targetedComplete) {
     state.targetedPractice = null;
+    state.questionNumber = 0;
+  }
+  // After the warm-up, carry on with ordinary practice.
+  if (state.warmup?.complete) {
+    state.warmup = null;
     state.questionNumber = 0;
   }
 
@@ -1941,11 +1958,11 @@ function renderStudentHomework(homework) {
     const due = new Date(`${a.dueDate}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
     const status = a.finished
       ? `<span class="is-done">Done</span>`
-      : `<span class="${a.dueDate < today ? "is-overdue" : ""}">${a.done} of ${a.count} done · ${a.dueDate < today ? "was due" : "due"} ${escapeHtml(due)}</span>`;
+      : `<span class="${a.dueDate < today ? "is-overdue" : ""}">${a.misconceptionType ? "Not cured yet" : `${a.done} of ${a.count} done`} · ${a.dueDate < today ? "was due" : "due"} ${escapeHtml(due)}</span>`;
     return `
       <div class="homework-item">
-        <div><strong>${a.concept === "class_questions" ? `${a.count} of your teacher's questions` : `${a.count} questions on ${escapeHtml(conceptName(a.concept).toLowerCase())}`}</strong>${status}</div>
-        ${a.finished ? "" : `<button class="ghost-button homework-start" type="button" data-concept="${escapeHtml(a.concept)}">${a.done ? "Carry on" : "Start"}</button>`}
+        <div><strong>${a.misconceptionType ? `Cure “${escapeHtml(conceptName(a.misconceptionType))}” in ${escapeHtml(conceptName(a.concept).toLowerCase())}` : a.concept === "class_questions" ? `${a.count} of your teacher's questions` : `${a.count} questions on ${escapeHtml(conceptName(a.concept).toLowerCase())}`}</strong>${status}</div>
+        ${a.finished ? "" : `<button class="ghost-button homework-start" type="button" data-concept="${escapeHtml(a.concept)}" data-misconception="${escapeHtml(a.misconceptionType || "")}">${a.misconceptionType ? "Start trap round" : a.done ? "Carry on" : "Start"}</button>`}
       </div>`;
   }).join("");
 }
@@ -1956,6 +1973,7 @@ async function loadMotivation() {
     renderMotivation(data.profile);
     renderClassMembership(data.profile?.classMembership || null);
     renderStudentHomework(data.profile?.homework || []);
+    renderWarmup(data.profile?.warmup || null);
   } catch (error) {
     // A new student has no record yet: show an empty goal.
     if (error.status === 404) {
@@ -2104,7 +2122,9 @@ loadMotivation();
 $("classJoinForm").addEventListener("submit", joinClass);
 $("homeworkItems").addEventListener("click", (event) => {
   const button = event.target.closest(".homework-start");
-  if (button) practiceTopic(button.dataset.concept);
+  if (!button) return;
+  if (button.dataset.misconception) practiceMisconception(button.dataset.concept, button.dataset.misconception);
+  else practiceTopic(button.dataset.concept);
 });
 $("leaveClassButton").addEventListener("click", leaveClass);
 prefillClassFromLink();
@@ -2113,3 +2133,24 @@ prefillClassFromLink();
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
+
+// ------------------------------------------------------------
+// Daily warm-up
+// ------------------------------------------------------------
+
+function localToday() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+// Done today: say so and hide the button. Otherwise offer it.
+function renderWarmup(warmup) {
+  const doneToday = warmup?.date === localToday() && warmup.complete;
+  $("warmupText").textContent = doneToday
+    ? "Done for today. A new one is ready tomorrow."
+    : "3 quick questions picked from your own mistakes";
+  $("warmupButton").classList.toggle("hidden", doneToday);
+  $("warmupBox").classList.toggle("is-done", doneToday);
+}
+
+$("warmupButton").addEventListener("click", () => startSession({ warmup: true }));

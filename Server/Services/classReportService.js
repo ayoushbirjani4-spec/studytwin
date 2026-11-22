@@ -151,19 +151,19 @@ async function buildClassReport(classRecord, { now = Date.now() } = {}) {
             limit: ATTEMPTS_PER_STUDENT
         }));
         students.push(summariseStudent(member, rows, now));
-        homeworkRows.push({ name: member.displayName || "Unnamed", rows });
+        homeworkRows.push({ name: member.displayName || "Unnamed", rows, member });
     }
 
     // Homework: who has finished, started or not started each assignment.
     const assignments = (classRecord.assignments || []).map((assignment) => {
         const progress = homeworkRows
-            .map(({ name, rows }) => ({ name, ...studySessionService.homeworkProgress(assignment, rows) }))
+            .map(({ name, rows, member }) => ({ name, ...studySessionService.homeworkProgress(assignment, rows, member) }))
             .sort((a, b) => a.name.localeCompare(b.name));
         return {
             ...assignment,
             finished: progress.filter((p) => p.finished).length,
-            started: progress.filter((p) => !p.finished && p.done > 0).length,
-            notStarted: progress.filter((p) => p.done === 0).length,
+            started: progress.filter((p) => !p.finished && (p.done > 0 || p.trapsAnswered > 0)).length,
+            notStarted: progress.filter((p) => !p.finished && p.done === 0 && !p.trapsAnswered).length,
             students: progress
         };
     });
@@ -258,4 +258,12 @@ function toCsv(rows) {
     return [columns.join(","), ...rows.map((row) => columns.map((c) => cell(row[c])).join(","))].join("\r\n");
 }
 
-module.exports = { buildClassReport, exportClassAttempts, toCsv, STUCK_THRESHOLD, RECENT_WINDOW };
+// One student's report, for the parent link: the same fields as a row of
+// the class report, without ids.
+async function buildStudentReport(student) {
+    const rows = chronological(await attemptLogStore.listAttempts({ studentId: student.studentId, limit: ATTEMPTS_PER_STUDENT }));
+    const { studentId, twinEffect, ...rest } = summariseStudent(student, rows, Date.now());
+    return { ...rest, twinEffect: twinEffect.map((e) => ({ type: e.type, label: label(e.type), status: e.status, before: e.before, after: e.after })) };
+}
+
+module.exports = { buildClassReport, buildStudentReport, exportClassAttempts, toCsv, STUCK_THRESHOLD, RECENT_WINDOW };

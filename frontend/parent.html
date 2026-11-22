@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A student's progress in StudyTwin" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="robots" content="noindex" />
+  <title>Progress report · StudyTwin</title>
+  <script>
+    try {
+      var savedTheme = localStorage.getItem("studytwin_theme");
+      if (savedTheme === "dark" || savedTheme === "light") {
+        document.documentElement.dataset.theme = savedTheme;
+      }
+    } catch (e) {}
+  </script>
+  <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="./css/style.css?v=20261122-6" />
+</head>
+<body>
+  <main class="parent-page">
+    <div class="brand">
+      <strong>StudyTwin</strong>
+      <span>Maths working, checked line by line</span>
+    </div>
+    <p id="parentStatus" class="parent-status" role="status">Loading the report…</p>
+    <div id="parentReport" class="parent-report"></div>
+    <p class="parent-note">This page is private to whoever has the link. It shows practice in StudyTwin only, not school marks.</p>
+  </main>
+  <script src="./js/report.js?v=20261122-6"></script>
+  <script src="./js/parent.js?v=20261122-6"></script>
+</body>
+</html>

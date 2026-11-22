@@ -133,7 +133,7 @@ function renderStudents(students) {
       <td>${s.hintsPerAnswer === null ? `<span class="muted">–</span>` : `${s.hintsPerAnswer} per answer`}</td>
       <td>${s.stuckOn ? `<span class="mistake-tag">${escapeHtml(s.stuckOn.label)}</span>` : `<span class="muted">–</span>`}</td>
       <td>${s.cured.length ? s.cured.map((c) => escapeHtml(c.label)).join(", ") : `<span class="muted">–</span>`}</td>
-      <td><button class="text-button print-student" type="button" data-id="${escapeHtml(s.id)}">Print</button></td>
+      <td><button class="text-button print-student" type="button" data-id="${escapeHtml(s.id)}">Print</button> <button class="text-button parent-link" type="button" data-id="${escapeHtml(s.id)}">Parent link</button></td>
     </tr>
   `).join("");
 }
@@ -581,13 +581,13 @@ function renderHomework(assignments, studentCount) {
     const rows = a.students.map((s) => `
       <tr>
         <td>${escapeHtml(s.name)}</td>
-        <td>${s.done} of ${a.count}${s.finished ? " ✓" : ""}</td>
+        <td>${a.misconceptionType ? (s.finished ? "Cured ✓" : `${s.trapsAnswered || 0} traps answered`) : `${s.done} of ${a.count}${s.finished ? " ✓" : ""}`}</td>
         <td>${s.done ? `${s.correct} right` : `<span class="muted">–</span>`}</td>
       </tr>`).join("");
     return `
       <div class="homework-row">
         <div class="mastery-head">
-          <strong>${a.count} questions · ${escapeHtml(topicName(a.concept))}</strong>
+          <strong>${a.misconceptionType ? `Cure: ${escapeHtml(topicName(a.misconceptionType))} · ${escapeHtml(topicName(a.concept))}` : `${a.count} questions · ${escapeHtml(topicName(a.concept))}`}</strong>
           <span class="${overdue ? "homework-overdue" : ""}">${overdue ? "Was due" : "Due"} ${escapeHtml(dueLabel(a.dueDate))}</span>
         </div>
         <div class="mastery-track"><div class="mastery-fill" style="width:${share}%"></div></div>
@@ -609,7 +609,10 @@ $("homeworkForm").addEventListener("submit", async (event) => {
     await api(`/api/classes/${encodeURIComponent(state.current.code)}/assignments`, {
       method: "POST",
       key: state.current.key,
-      body: { concept: $("homeworkTopic").value, count: Number($("homeworkCount").value), dueDate: $("homeworkDue").value }
+      body: {
+        concept: $("homeworkTopic").value, count: Number($("homeworkCount").value), dueDate: $("homeworkDue").value,
+        ...($("homeworkMistake").value ? { misconceptionType: $("homeworkMistake").value } : {})
+      }
     });
     openClass(state.current);
   } catch (error) {
@@ -643,41 +646,9 @@ loadHomeworkTopics();
 
 const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "–");
 
+// The student page is shared with the parent link (js/report.js).
 function printStudentPage(student, className) {
-  const topics = student.topics.length
-    ? `<table><thead><tr><th>Topic</th><th>Answers</th><th>Mastery</th></tr></thead><tbody>${student.topics.map((t) =>
-        `<tr><td>${escapeHtml(topicName(t.concept))}</td><td>${t.attempts}</td><td>${percent(t.mastery)}</td></tr>`).join("")}</tbody></table>`
-    : "<p>No answers yet.</p>";
-
-  const mistakes = Object.entries(student.recentMistakes || {});
-  const twin = student.twinEffect.filter((e) => ["improved", "unchanged", "not_yet"].includes(e.status));
-  const recent = student.recentWork.length
-    ? `<table><thead><tr><th>Date</th><th>Topic</th><th>Result</th><th>Mistake</th></tr></thead><tbody>${student.recentWork.map((r) =>
-        `<tr><td>${escapeHtml(shortDate(r.createdAt))}</td><td>${escapeHtml(topicName(r.concept))}</td><td>${r.correct ? "Correct" : "Not yet"}</td><td>${escapeHtml(r.mistake || "–")}</td></tr>`).join("")}</tbody></table>`
-    : "<p>No answers yet.</p>";
-
-  return `
-    <section class="print-page">
-      <header class="print-head">
-        <div><p class="print-kicker">StudyTwin progress report</p><h1>${escapeHtml(student.name)}</h1></div>
-        <p>${escapeHtml(className)}<br>${escapeHtml(shortDate(new Date().toISOString()))}</p>
-      </header>
-      <div class="print-stats">
-        <div><strong>${student.answers}</strong><span>${student.answers === 1 ? "answer" : "answers"} checked</span></div>
-        <div><strong>${percent(student.recentAccuracy)}</strong><span>mastery, last 20 answers</span></div>
-        <div><strong>${student.hintsPerAnswer ?? "–"}</strong><span>hints per answer</span></div>
-        <div><strong>${escapeHtml(shortDate(student.lastActive))}</strong><span>last practised</span></div>
-      </div>
-      <h2>Topics</h2>${topics}
-      <h2>Mistakes</h2>
-      <p>${student.stuckOn ? `Working on: <strong>${escapeHtml(student.stuckOn.label)}</strong> (${student.stuckOn.count} of the last ${student.stuckOn.outOf} answers).` : "Not stuck on any one mistake right now."}</p>
-      ${mistakes.length ? `<p>In the last 20 answers: ${mistakes.map(([type, n]) => `${escapeHtml(topicName(type))} ×${n}`).join(", ")}.</p>` : ""}
-      ${student.cured.length ? `<p>Cured in a trap round: ${student.cured.map((c) => `${escapeHtml(c.label)}${c.status === "held" ? " (held at both check-ups)" : c.status === "slipped" ? " (came back since)" : ""}`).join(", ")}.</p>` : ""}
-      ${twin.length ? `<h2>Teaching the twin</h2><ul>${twin.map((e) =>
-        `<li>${escapeHtml(e.label)}: in ${percent(e.before.rate)} of answers before (${e.before.errors} of ${e.before.attempts}), ${percent(e.after.rate)} since (${e.after.errors} of ${e.after.attempts}).</li>`).join("")}</ul>` : ""}
-      <h2>Recent work</h2>${recent}
-      <p class="print-foot">Mastery counts answers where both the working and the final answer were right.</p>
-    </section>`;
+  return studentReportHtml(student, className);
 }
 
 function printClassPage(report) {
@@ -787,6 +758,30 @@ $("questionsHomeworkButton").addEventListener("click", async () => {
       body: { concept: CLASS_QUESTIONS, count: Math.min(50, Number($("questionsHomeworkButton").dataset.count)), dueDate: due }
     });
     openClass(state.current);
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+// A "cure a mistake" goal is one trap round, so the question count doesn't apply.
+$("homeworkMistake").addEventListener("change", () => { $("homeworkCount").disabled = Boolean($("homeworkMistake").value); });
+
+// ------------------------------------------------------------
+// Parent link: a private, read-only page with one student's report
+// ------------------------------------------------------------
+
+$("studentsTable").addEventListener("click", async (event) => {
+  const button = event.target.closest(".parent-link");
+  if (!button) return;
+  try {
+    const data = await api(`/api/classes/${encodeURIComponent(state.current.code)}/parent-link`, {
+      method: "POST", key: state.current.key, body: { student: button.dataset.id }
+    });
+    const link = `${location.origin}/parent.html#k=${encodeURIComponent(data.token)}`;
+    $("parentLinkBox").innerHTML = `
+      <p>Parent link for <strong>${escapeHtml(data.name)}</strong>. Anyone with it can see this report, so send it only to the family. Making a new link switches this one off.</p>
+      <div class="copy-row"><code id="parentLinkText">${escapeHtml(link)}</code><button class="ghost-button" type="button" data-copy="parentLinkText">Copy</button></div>`;
+    $("parentLinkBox").classList.remove("hidden");
   } catch (error) {
     showError(error.message);
   }

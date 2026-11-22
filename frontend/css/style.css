@@ -1028,3 +1028,30 @@ a.nav-item { text-decoration: none; color: inherit; }
 .questions-list .question-remove { margin-left: auto; }
 #questionsHomeworkButton { margin-top: 12px; }
 @media (max-width: 640px) { .questions-form { grid-template-columns: 1fr; } }
+
+/* Parent link */
+.parent-link-box { margin: 8px 0 16px; padding: 12px 16px; border-radius: var(--r-control); background: var(--ink-soft); font-size: 14px; color: var(--text-2); }
+.parent-link-box p { margin: 0 0 8px; }
+.parent-page { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+.parent-page .brand { padding: 0 0 24px; }
+.parent-status { color: var(--text-2); }
+.parent-report .print-page { padding: 24px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--card); }
+.parent-report .print-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.parent-report .print-head h1 { margin: 4px 0 0; font-size: 26px; }
+.parent-report .print-head p { margin: 0; font-size: 14px; color: var(--text-2); }
+.parent-report .print-kicker { font-size: 13px; color: var(--muted) !important; }
+.parent-report .print-stats { display: flex; flex-wrap: wrap; gap: 24px; margin: 16px 0; }
+.parent-report .print-stats strong { display: block; font-size: 22px; }
+.parent-report .print-stats span { font-size: 13px; color: var(--muted); }
+.parent-report h2 { margin: 20px 0 6px; font-size: 16px; }
+.parent-report p, .parent-report li { line-height: 1.5; color: var(--text-2); }
+.parent-report table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.parent-report th, .parent-report td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.parent-report .print-foot, .parent-note { font-size: 13px; color: var(--muted); }
+
+/* Daily warm-up */
+.warmup-box { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin: 24px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--ink-soft); }
+.warmup-box strong { display: block; font-size: 15px; }
+.warmup-box span { font-size: 13px; color: var(--text-2); }
+.warmup-box.is-done { background: var(--right-soft); }
+.warmup-box.is-done strong { color: var(--right); }

@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261122-4" />
+  <link rel="stylesheet" href="./css/style.css?v=20261122-6" />
 </head>
 <body>
   <!-- Line icons (lucide shapes), referenced with <use> -->
@@ -103,6 +103,11 @@
         <div class="start-copy">
           <h2>Show your working. Fix the step that went wrong.</h2>
           <p>Write each line of an equation. StudyTwin checks every step as you go, explains the first mistake, and picks your next question from how you're doing.</p>
+
+          <div id="warmupBox" class="warmup-box">
+            <div><strong>Daily warm-up</strong><span id="warmupText">3 quick questions picked from your own mistakes</span></div>
+            <button id="warmupButton" class="primary-button" type="button">Start warm-up</button>
+          </div>
 
           <div id="homeworkBox" class="homework-box hidden" role="region" aria-label="Homework">
             <p class="homework-box-title">Homework from your teacher</p>
@@ -380,6 +385,6 @@
       <div id="globalError" class="error-banner hidden"></div>
     </main>
   </div>
-  <script src="./js/app.js?v=20261122-4"></script>
+  <script src="./js/app.js?v=20261122-6"></script>
 </body>
 </html>
