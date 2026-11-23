@@ -198,7 +198,9 @@ function isAnswerLine(line) {
 
 // "valid", or the label of what's wrong, or null if the line can't be read.
 function judgeLine(question, line) {
-    const parts = String(line).split(/\bor\b|,/i).map((p) => p.trim()).filter(Boolean);
+    // "x = ±7" means "x = 7 or x = -7".
+    const expanded = String(line).replace(/x\s*=\s*±\s*([\d./]+)/gi, "x = $1 or x = -$1");
+    const parts = expanded.split(/\bor\b|,/i).map((p) => p.trim()).filter(Boolean);
     const solutions = solutionsOf(question);
     if (question.concept === "quadratics" && parts.length > 1) {
         // "x - 2 = 0 or x - 3 = 0": each solution must satisfy one of the parts.
@@ -256,7 +258,7 @@ function diagnose(question, studentAnswer, work) {
     for (const line of rules.splitWorkSteps(String(work || ""))) {
         if (line.replace(/\s/g, "") === startOf(question).replace(/\s/g, "")) continue;
         const verdict = isAnswerLine(line) && question.concept === "quadratics"
-            ? judgeLine(question, line.replace(/±/g, ""))
+            ? judgeLine(question, line)
             : judgeLine(question, line);
         if (verdict && verdict !== "valid") {
             return {
@@ -283,4 +285,4 @@ function diagnose(question, studentAnswer, work) {
             hint: "Check that every line is still true for your answer." };
 }
 
-module.exports = { CONCEPTS, handles, answersMatch, checkSteps, diagnose, compile, readRoots, readPair, FEEDBACK };
+module.exports = { CONCEPTS, handles, answersMatch, checkSteps, diagnose, judgeLine, compile, readRoots, readPair, FEEDBACK };

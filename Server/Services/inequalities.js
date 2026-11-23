@@ -189,4 +189,4 @@ function diagnose(question, studentAnswer, work) {
         };
 }
 
-module.exports = { isInequalityQuestion, answersMatch, solve, formatSolution, checkSteps, diagnose, SHOW, FLIP };
+module.exports = { isInequalityQuestion, answersMatch, solve, classify, formatSolution, checkSteps, diagnose, SHOW, FLIP };

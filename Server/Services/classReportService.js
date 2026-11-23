@@ -140,6 +140,31 @@ function cureSummary(students) {
     };
 }
 
+// Study mode: each group's mistake rate before the study and since, pooled.
+// Before uses each student's last 20 answers before it started.
+function studyComparison(classRecord, entries) {
+    const since = new Date(classRecord.study.startedAt);
+    const empty = () => ({ students: [], before: { errors: 0, attempts: 0 }, after: { errors: 0, attempts: 0 } });
+    const groups = { twin: empty(), practice: empty() };
+    const mistakes = (rows) => rows.filter((row) => row.misconceptionDetected).length;
+    for (const { name, rows, member } of entries) {
+        const group = groups[studySessionService.studyGroup(member.studentId, classRecord.code, classRecord.study)];
+        const before = rows.filter((row) => new Date(row.createdAt) < since).slice(-20);
+        const after = rows.filter((row) => new Date(row.createdAt) >= since);
+        group.students.push(name);
+        group.before.errors += mistakes(before);
+        group.before.attempts += before.length;
+        group.after.errors += mistakes(after);
+        group.after.attempts += after.length;
+    }
+    for (const group of Object.values(groups)) {
+        for (const side of [group.before, group.after]) side.rate = side.attempts ? Number((side.errors / side.attempts).toFixed(4)) : null;
+        group.change = group.before.rate && group.after.rate !== null
+            ? Number(((group.after.rate - group.before.rate) / group.before.rate).toFixed(4)) : null;
+    }
+    return { startedAt: classRecord.study.startedAt, groups };
+}
+
 async function buildClassReport(classRecord, { now = Date.now() } = {}) {
     const members = await studentStore.listByClass(classRecord.code);
 
@@ -199,6 +224,7 @@ async function buildClassReport(classRecord, { now = Date.now() } = {}) {
             twinEffect: twinEffect.map((e) => ({ type: e.type, label: label(e.type), status: e.status, before: e.before, after: e.after }))
         })),
         assignments,
+        study: classRecord.study ? studyComparison(classRecord, homeworkRows) : null,
         // The teacher's own questions, with the answers StudyTwin worked out.
         questions: (classRecord.questions || [])
             .map((id) => customQuestions.fromId(id))

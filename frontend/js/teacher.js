@@ -198,6 +198,7 @@ function renderReport(report) {
   renderMistakes(report.mistakes, report.totals.students);
   renderStudents(report.students);
   renderEvidence(report.evidence);
+  renderStudy(report.study);
   renderHomework(report.assignments || [], report.totals.students);
   renderQuestions(report.questions || []);
 }
@@ -813,3 +814,40 @@ async function openDemoClass() {
 }
 
 $("demoClassButton").addEventListener("click", openDemoClass);
+
+// ------------------------------------------------------------
+// Study mode: a fair test of the twin
+// ------------------------------------------------------------
+
+function renderStudy(study) {
+  if (!study) {
+    $("studyBody").innerHTML = `
+      <p class="muted">Does teaching the twin really help? Start a study and StudyTwin splits the class at random: half teach their twin, half practise without it. The comparison builds up here as they practise. Run it for at least two weeks.</p>
+      <button class="ghost-button" type="button" data-study="on">Start a study</button>`;
+    return;
+  }
+  const row = (label, g) => `<tr><td>${label}</td><td>${g.students.length}</td>
+    <td>${percent(g.before.rate)} <span class="muted">(${g.before.errors} of ${g.before.attempts})</span></td>
+    <td>${percent(g.after.rate)} <span class="muted">(${g.after.errors} of ${g.after.attempts})</span></td>
+    <td>${g.change === null ? "–" : `${g.change < 0 ? "" : "+"}${Math.round(g.change * 100)}%`}</td></tr>`;
+  const { twin, practice } = study.groups;
+  $("studyBody").innerHTML = `
+    <p class="muted">Running since ${escapeHtml(shortDate(study.startedAt))}. How often each group made a mistake, before the study and since.</p>
+    <div class="table-scroll"><table class="attempts-table"><thead><tr><th>Group</th><th>Students</th><th>Before</th><th>Since</th><th>Change</th></tr></thead>
+      <tbody>${row("Teach the twin", twin)}${row("Practice only", practice)}</tbody></table></div>
+    <p class="teacher-row-detail">Teach the twin: ${escapeHtml(twin.students.join(", ") || "–")}<br>Practice only: ${escapeHtml(practice.students.join(", ") || "–")}</p>
+    <p class="evidence-caveat">If the twin helps, the twin group's mistakes should fall more than the practice group's. With a small class, wait for a few hundred answers in each group before reading much into it.</p>
+    <button class="ghost-button" type="button" data-study="off">End the study</button>`;
+}
+
+$("studyBody").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-study]");
+  if (!button) return;
+  if (button.dataset.study === "off" && !confirm("End the study? Everyone gets the twin again, and the comparison stops.")) return;
+  try {
+    await api(`/api/classes/${encodeURIComponent(state.current.code)}/study`, { method: "POST", key: state.current.key, body: { on: button.dataset.study === "on" } });
+    openClass(state.current);
+  } catch (error) {
+    showError(error.message);
+  }
+});

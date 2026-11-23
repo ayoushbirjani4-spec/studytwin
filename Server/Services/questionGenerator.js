@@ -541,11 +541,16 @@ const TRAPS = {
     wrong_inverse_op: ["dp2", "dp3", "io2", "io4", "io6", "eb2", "eb5", "xb1", "xb2", "xb3", "ng1", "ng3", "fr1", "fr2", "fr3", "wp1", "wp2", "wp3", "wp4", "wp5"],
     one_sided_op: ["dp1", "dp4", "io5", "io6", "eb4", "eb5", "xb1", "xb2", "xb3", "ng3", "ng4", "fr2", "wp1", "wp2", "wp3", "wp4", "wp5"],
     arithmetic_slip: ["dp3", "dp4", "io5", "io6", "eb4", "eb5", "xb3", "ng2", "ng3", "ng4", "fr1", "fr2", "clt4", "clt5"],
-    combining_unlike_terms: ["clt3", "clt4", "clt5"]
+    combining_unlike_terms: ["clt3", "clt4", "clt5"],
+    // Their own rules: dividing by a negative, and keeping both solutions.
+    inequality_flip: ["iq3", "iq4"],
+    lost_a_solution: ["qd1", "qd2", "qd3", "qd4"]
 };
 
 // What the trap was set to catch, shown once the student has answered.
 const TRAP_NOTES = {
+    inequality_flip: "This one was set to catch forgetting to flip the sign when dividing by a negative.",
+    lost_a_solution: "This one was set to catch keeping only one of the two solutions.",
     failed_to_distribute: "This one was set to catch multiplying only the first term in the brackets.",
     sign_error: "This one was set to catch a lost minus sign.",
     wrong_inverse_op: "This one was set to catch undoing a step with the wrong operation.",

@@ -1513,7 +1513,9 @@ const TWIN_MISTAKE_NAMES = {
   wrong_inverse_op: "Using the wrong inverse operation",
   one_sided_op: "Changing only one side of the equation",
   combining_unlike_terms: "Combining terms that aren't alike",
-  arithmetic_slip: "Small calculation slips"
+  arithmetic_slip: "Small calculation slips",
+  inequality_flip: "Forgetting to flip the inequality sign",
+  lost_a_solution: "Losing one of a quadratic's two solutions"
 };
 
 async function chooseTwinLine(index) {
@@ -1974,6 +1976,7 @@ async function loadMotivation() {
     renderClassMembership(data.profile?.classMembership || null);
     renderStudentHomework(data.profile?.homework || []);
     renderWarmup(data.profile?.warmup || null);
+    renderStudyGroup(data.profile?.studyGroup || null);
   } catch (error) {
     // A new student has no record yet: show an empty goal.
     if (error.status === 404) {
@@ -2282,3 +2285,16 @@ $("tourNext").addEventListener("click", () => {
   window.open("/teacher.html?demo=1", "_blank", "noopener");
   endTour();
 });
+
+// Study mode: the practice group works without the twin for now.
+function renderStudyGroup(group) {
+  const practiceOnly = group === "practice";
+  for (const id of ["twinStartButton", "twinSidebarButton"]) $(id).classList.toggle("hidden", practiceOnly);
+  const invite = document.querySelector(".twin-invite-text span");
+  if (invite) {
+    invite.dataset.original ||= invite.textContent;
+    invite.textContent = practiceOnly
+      ? "Your class is running a study, and your group practises without the twin for now."
+      : invite.dataset.original;
+  }
+}

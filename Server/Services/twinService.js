@@ -20,6 +20,8 @@
 const { questions: QUESTION_BANK } = require("../data/questions");
 const { generateQuestionSet } = require("./questionGenerator");
 const misconceptionService = require("./misconceptionService");
+const inequalities = require("./inequalities");
+const solutionChecker = require("./solutionChecker");
 
 const TWIN_MISCONCEPTIONS = [
     "failed_to_distribute",
@@ -27,7 +29,10 @@ const TWIN_MISCONCEPTIONS = [
     "wrong_inverse_op",
     "one_sided_op",
     "combining_unlike_terms",
-    "arithmetic_slip"
+    "arithmetic_slip",
+    // Checked by their own rules (inequalities.js, solutionChecker.js).
+    "inequality_flip",
+    "lost_a_solution"
 ];
 
 // ------------------------------------------------------------
@@ -462,14 +467,51 @@ function verify(question, built, type) {
 
 // Every verified variant of this misconception for this question, in a
 // fixed order; `variant` is its position in that list.
+// Inequalities and quadratics: the twin works through the right steps, then
+// slips on the last line, either forgetting to flip the sign (dividing by a negative)
+// or keeping only one of the two solutions. Checked with their own rules.
+// Returns null for any other question, so the usual builders run.
+function specialVariants(question, type) {
+    const start = String(question.question || "").replace(/^\s*solve\s*:\s*/i, "");
+    const steps = question.solution_steps || [];
+
+    if (inequalities.isInequalityQuestion(question)) {
+        if (type !== "inequality_flip" || !/flip/i.test(steps.join(" "))) return [];
+        const lines = [start, ...steps.filter((step) => /[<>≤≥]/.test(step))];
+        const last = lines.pop().match(/^x ([<>≤≥]) (.+)$/);
+        if (!last) return [];
+        const FLIPPED = { "<": ">", ">": "<", "≤": "≥", "≥": "≤" };
+        lines.push(`x ${FLIPPED[last[1]]} ${last[2]}`);
+        const wrongIndex = lines.length - 1;
+        const ok = lines.slice(1).every((line, i) =>
+            (i + 1 === wrongIndex) === (inequalities.classify(lines[i], line) === "inequality_flip"));
+        // The slip is on the final line, which is judged on Check answer, not live.
+        return ok ? [{ lines, wrongIndex, stage: "evaluate" }] : [];
+    }
+
+    if (question.concept === "quadratics") {
+        if (type !== "lost_a_solution") return [];
+        const roots = solutionChecker.readRoots(question.answer) || [];
+        const keep = roots.find((root) => root > 0) ?? roots[0];
+        const working = steps.filter((step) => step.includes("="));
+        const lines = [start, ...working.slice(0, -1), `x = ${keep}`];
+        const wrongIndex = lines.length - 1;
+        const ok = lines.slice(1).every((line, i) =>
+            solutionChecker.judgeLine(question, line) === (i + 1 === wrongIndex ? "lost_a_solution" : "valid"));
+        return ok ? [{ lines, wrongIndex, stage: "evaluate" }] : [];
+    }
+
+    return null;
+}
+
 function listTwinVariants(question, type) {
     if (!question || !TWIN_MISCONCEPTIONS.includes(type)) return [];
 
-    const parsed = parseQuestion(question);
-    if (!parsed) return [];
+    const special = specialVariants(question, type);
+    const parsed = special ? null : parseQuestion(question);
+    if (!special && !parsed) return [];
 
-    return VARIANT_BUILDERS[parsed.kind](parsed, type)
-        .filter((built) => verify(question, built, type))
+    return (special || VARIANT_BUILDERS[parsed.kind](parsed, type).filter((built) => verify(question, built, type)))
         .map((built, variant) => {
             const lastLine = built.lines[built.lines.length - 1];
             return {

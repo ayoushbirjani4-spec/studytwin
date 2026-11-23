@@ -35,6 +35,8 @@ const classStore = require("./Services/classStore");
 const classReportService = require("./Services/classReportService");
 const customQuestions = require("./Services/customQuestions");
 const demoClass = require("./Services/demoClass");
+const inequalities = require("./Services/inequalities");
+const solutionChecker = require("./Services/solutionChecker");
 const { createAnswerRateLimiter } = require("./middleware/rateLimit");
 const { serviceStatus } = require("./middleware/serviceErrors");
 
@@ -558,6 +560,15 @@ app.post(
                 if (!allowed) {
                     return;
                 }
+                // Study mode: the practice group works without the twin for now.
+                const student = await studentStore.get(studentId);
+                if (await studySessionService.studyGroupFor(student) === "practice") {
+                    return res.status(403).json({
+                        success: false,
+                        studyGroup: "practice",
+                        error: "Your class is running a study, and your group practises without the twin for now."
+                    });
+                }
                 const [profile, twinContext] = await Promise.all([
                     studySessionService.getStudentProfile(studentId),
                     studySessionService.getTwinContext(studentId)
@@ -667,6 +678,18 @@ function gradeTwinCorrection(questionId, previousLine, correctedLine) {
     const normalize = (line) => String(line).replace(/\s+/g, "").toLowerCase();
     if (normalize(corrected) === normalize(previousLine)) {
         return false;
+    }
+
+    // Inequalities and quadratics have their own rules: the fix must keep the
+    // inequality's solution, or keep every solution of the quadratic.
+    const question = questionService.findQuestionById(questionId);
+    if (question && inequalities.isInequalityQuestion(question)) {
+        const before = inequalities.solve(previousLine);
+        const after = inequalities.solve(corrected);
+        return Boolean(before && after && before.op === after.op && Math.abs(before.value - after.value) < 1e-9);
+    }
+    if (question && question.concept === "quadratics") {
+        return solutionChecker.judgeLine(question, corrected) === "valid";
     }
 
     const check = misconceptionService.checkSteps({
@@ -805,7 +828,10 @@ app.post(
         // Remember the teaching. A storage problem must not cost the student
         // their result, so failures are reported, not thrown.
         let memory = null;
-        if (fixedIt && typeof studentId === "string" && studentId) {
+        // Study mode: teaching by the practice group isn't recorded.
+        const inPracticeGroup = typeof studentId === "string" && studentId &&
+            await studySessionService.studyGroupFor(await studentStore.get(studentId)) === "practice";
+        if (fixedIt && typeof studentId === "string" && studentId && !inPracticeGroup) {
             try {
                 const recorded = await studySessionService.recordTwinTeaching(
                     studentId,
@@ -1401,6 +1427,42 @@ app.get("/api/classes/:code/export.csv", stepCheckRateLimiter, async (req, res) 
         res.send(classReportService.toCsv(rows));
     } catch (error) {
         sendServiceError(res, error, "Unable to export the class.");
+    }
+});
+
+
+// ============================================================
+// STUDY MODE
+// ============================================================
+//
+// POST /api/classes/:code/study   teacher: { on: true } to start, { on: false } to end
+//
+// While a study runs, half the class (chosen at random) teaches the twin
+// and half practises without it; the class report compares the two.
+//
+// ============================================================
+
+app.post("/api/classes/:code/study", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        let study = null;
+        if (req.body?.on === true) {
+            // Shuffle the class and deal it into two equal halves, so the
+            // groups are random and the same size.
+            const crypto = require("node:crypto");
+            const members = (await studentStore.listByClass(classRecord.code)).map((m) => m.studentId);
+            for (let i = members.length - 1; i > 0; i--) {
+                const j = crypto.randomInt(i + 1);
+                [members[i], members[j]] = [members[j], members[i]];
+            }
+            const groups = Object.fromEntries(members.map((id, i) => [id, i % 2 === 0 ? "twin" : "practice"]));
+            study = { startedAt: new Date().toISOString(), groups };
+        }
+        await classStore.setStudy(classRecord.code, study);
+        res.json({ success: true, study: study && { startedAt: study.startedAt } });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to change study mode.");
     }
 });
 

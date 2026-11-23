@@ -171,6 +171,17 @@ async function removeAssignment(code, id) {
 
 const MAX_QUESTIONS = 50;
 
+// Study mode: { startedAt } while running, null when off.
+async function setStudy(code, study) {
+  const clean = normaliseCode(code);
+  if (useMemoryStore()) {
+    const found = memoryClasses.get(clean);
+    if (found) found.study = study ? { ...study } : null;
+    return;
+  }
+  await (await getCollection()).updateOne({ _id: clean }, { $set: { study } });
+}
+
 async function setQuestions(code, ids) {
   const clean = normaliseCode(code);
   const list = [...new Set(ids)].slice(0, MAX_QUESTIONS);
@@ -191,5 +202,6 @@ module.exports = {
   setPoll, closePoll, vote,
   addAssignment, removeAssignment,
   setQuestions, MAX_QUESTIONS,
+  setStudy,
   clearMemoryClasses
 };

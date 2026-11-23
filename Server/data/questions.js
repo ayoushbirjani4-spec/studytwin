@@ -601,6 +601,11 @@ const questions = [
         solution_steps: ["Subtract 5 from both sides", "-3x ≥ 9", "Divide both sides by -3 and flip the sign", "x ≤ -3"],
         explanation: "Subtract 5, then divide by -3. Dividing by a negative flips ≥ to ≤."
     },
+    {
+        id: "iq_006", question: "Solve: -4x - 3 > 9", concept: "inequalities", difficulty: 3, answer: "x < -3",
+        solution_steps: ["Add 3 to both sides", "-4x > 12", "Divide both sides by -4 and flip the sign", "x < -3"],
+        explanation: "Add 3, then divide by -4. Dividing by a negative flips > to <."
+    },
 
 
     // ========================================================

@@ -176,6 +176,28 @@ function gradeCheckup(student, questionId, misconceptionType, demonstratedCorrec
 }
 
 // ------------------------------------------------------------
+// Study mode: half the class teaches the twin, half practises without it
+// ------------------------------------------------------------
+//
+// Each student's group comes from a hash of their id and the class code:
+// random, about half each way, and the same every time, with nothing to store.
+
+// The group saved when the study started (an even split), or for anyone
+// who joined later, the hash of their id.
+function studyGroup(studentId, classCode, study = null) {
+    if (study?.groups?.[studentId]) return study.groups[studentId];
+    const digest = require("node:crypto").createHash("sha256").update(`${classCode}:${studentId}`).digest();
+    return digest[0] % 2 === 0 ? "twin" : "practice";
+}
+
+// The student's group if their class is running a study, else null.
+async function studyGroupFor(student) {
+    if (!student?.classCode) return null;
+    const classRecord = await classStore.get(student.classCode);
+    return classRecord?.study ? studyGroup(student.studentId, student.classCode, classRecord.study) : null;
+}
+
+// ------------------------------------------------------------
 // Daily warm-up: three quick questions from the student's own mistakes
 // ------------------------------------------------------------
 //
@@ -1934,6 +1956,9 @@ async function getStudentProfile(studentId) {
             ? { code: student.classCode, displayName: student.displayName || null }
             : null,
 
+        // Study mode: "twin" or "practice" while the class runs a study.
+        studyGroup: await studyGroupFor(student),
+
         // Homework set by their teacher, with progress from their answers.
         homework: homework.map(assignment => ({ ...assignment, ...homeworkProgress(assignment, trendAttemptLogs, student) })),
 
@@ -2221,6 +2246,8 @@ module.exports = {
         withStudentLock(args.studentId, () => joinClass(args)),
 
     labelMisconception,
+    studyGroup,
+    studyGroupFor,
     summariseCuredMistakes,
     homeworkProgress
 };
