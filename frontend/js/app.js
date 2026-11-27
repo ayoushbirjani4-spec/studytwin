@@ -385,12 +385,12 @@ function renderQuestion(question) {
     question.question || "Question unavailable";
 
   // A word problem is a story: smaller text, and the working starts with the equation.
-  const isStory = !/^(Solve|Simplify):/i.test(question.question || "");
+  const isStory = !/^(Solve|Simplify|Factorise):/i.test(question.question || "");
   $("questionText").classList.toggle("is-story", isStory);
   // An inequality's answer is a range, like x > 5 (typing >= or <= is fine).
   $("answerInput").placeholder = question.concept === "quadratics" ? "x = 2 or x = 3"
     : question.concept === "simultaneous_equations" ? "x = 4, y = 3"
-    : question.concept === "factorising" ? "(x + 2)(x + 3)"
+    : question.concept === "factorising" ? "(x + a)(x + b)"
     : /[<>≤≥]/.test(question.question || "") ? "x > 5" : "4";
   $("workInput").placeholder = isStory
     ? "Write an equation for the story first, then one step per line"
