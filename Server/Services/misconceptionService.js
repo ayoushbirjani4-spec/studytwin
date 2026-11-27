@@ -27,6 +27,7 @@
 const questionService = require("./questionService");
 const inequalities = require("./inequalities");
 const solutionChecker = require("./solutionChecker");
+const factorising = require("./factorising");
 const llmReviewService = require("./llmReviewService");
 
 const ML_API_URL =
@@ -2128,6 +2129,9 @@ function checkSteps({ questionId, work, reveal = false }) {
     if (solutionChecker.handles(question)) {
         return solutionChecker.checkSteps(question, work, reveal);
     }
+    if (factorising.handles(question)) {
+        return factorising.checkSteps(question, work, reveal);
+    }
 
     const start = getQuestionStart(question);
     const lines = splitWorkSteps(String(work || "").replace(/\*\s*\(/g, "("))
@@ -2797,16 +2801,22 @@ async function analyzeAnswer({
     const isInequality = inequalities.isInequalityQuestion(question);
     // Quadratics and simultaneous equations: checked against their solutions.
     const bySolution = solutionChecker.handles(question);
+    // Factorising: checked by value, and the answer must be fully factorised.
+    const isFactorising = factorising.handles(question);
     const correct = isInequality
         ? inequalities.answersMatch(studentAnswer, question.answer)
         : bySolution
         ? solutionChecker.answersMatch(studentAnswer, question.answer, question)
+        : isFactorising
+        ? factorising.answersMatch(studentAnswer, question.answer)
         : isAnswerCorrect(studentAnswer, question.answer);
 
     const misconception = isInequality
         ? inequalities.diagnose(question, studentAnswer, work)
         : bySolution
         ? solutionChecker.diagnose(question, studentAnswer, work)
+        : isFactorising
+        ? factorising.diagnose(question, studentAnswer, work)
         : await detectMisconception(
             question,
             studentAnswer,

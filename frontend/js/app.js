@@ -390,6 +390,7 @@ function renderQuestion(question) {
   // An inequality's answer is a range, like x > 5 (typing >= or <= is fine).
   $("answerInput").placeholder = question.concept === "quadratics" ? "x = 2 or x = 3"
     : question.concept === "simultaneous_equations" ? "x = 4, y = 3"
+    : question.concept === "factorising" ? "(x + 2)(x + 3)"
     : /[<>≤≥]/.test(question.question || "") ? "x > 5" : "4";
   $("workInput").placeholder = isStory
     ? "Write an equation for the story first, then one step per line"

@@ -22,6 +22,7 @@ const { generateQuestionSet } = require("./questionGenerator");
 const misconceptionService = require("./misconceptionService");
 const inequalities = require("./inequalities");
 const solutionChecker = require("./solutionChecker");
+const factorising = require("./factorising");
 
 const TWIN_MISCONCEPTIONS = [
     "failed_to_distribute",
@@ -32,7 +33,10 @@ const TWIN_MISCONCEPTIONS = [
     "arithmetic_slip",
     // Checked by their own rules (inequalities.js, solutionChecker.js).
     "inequality_flip",
-    "lost_a_solution"
+    "lost_a_solution",
+    // factorising.js
+    "factor_sign_error",
+    "factor_out_one_term"
 ];
 
 // ------------------------------------------------------------
@@ -499,6 +503,22 @@ function specialVariants(question, type) {
         const ok = lines.slice(1).every((line, i) =>
             solutionChecker.judgeLine(question, line) === (i + 1 === wrongIndex ? "lost_a_solution" : "valid"));
         return ok ? [{ lines, wrongIndex, stage: "evaluate" }] : [];
+    }
+
+    // Factorising: the twin writes a wrong factorised answer.
+    if (factorising.handles(question)) {
+        const answer = String(question.answer);
+        let wrong = null;
+        if (type === "factor_sign_error" && /^\(x [+-] \d+\)\(x [+-] \d+\)$/.test(answer)) {
+            wrong = answer.replace(/ ([+-]) /g, (m, sign) => (sign === "+" ? " - " : " + "));
+        }
+        const common = answer.match(/^(\d+)\((\d*x) \+ (\d+)\)$/);
+        if (type === "factor_out_one_term" && common) {
+            wrong = `${common[1]}(${common[2]} + ${Number(common[1]) * Number(common[3])})`;
+        }
+        if (!wrong || factorising.classifyAnswer(question, wrong) !== type) return [];
+        const expression = start.replace(/^\s*factori[sz]e\s*:\s*/i, "");
+        return [{ lines: [expression, wrong], wrongIndex: 1, stage: "evaluate" }];
     }
 
     return null;

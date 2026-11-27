@@ -30,8 +30,8 @@ function sampleQuestions(perTemplate = 15) {
 
 // What a student who gets it right would write.
 function correctWork(question) {
-  const start = question.equation || question.question.replace(/^(Solve|Simplify):\s*/, "");
-  if (question.question.startsWith("Simplify")) return `${start}\n${question.answer}`;
+  const start = question.equation || question.question.replace(/^(Solve|Simplify|Factorise):\s*/, "");
+  if (/^(Simplify|Factorise)/.test(question.question)) return `${start}\n${question.answer}`;
   // A word problem's steps repeat its equation as the first line.
   const steps = question.solution_steps.filter((s) => /[=<>≤≥]/.test(s) && s !== question.equation);
   return [start, ...steps].join("\n");
@@ -60,7 +60,7 @@ test("every topic and level gets questions in the bank's style", () => {
       assert.equal(q.difficulty, difficulty);
       // Word problems are stories with the equation kept alongside.
       if (q.equation) assert.match(q.equation, /=/);
-      else assert.match(q.question, /^(Solve|Simplify): /);
+      else assert.match(q.question, /^(Solve|Simplify|Factorise): /);
       assert.ok(!q.id.includes(":"), "twin memory keys split on ':'");
     }
   }
@@ -76,6 +76,10 @@ test("equation answers are whole numbers and simplify answers are tidy", () => {
       }
       const value = q.concept === "inequalities" ? q.answer.replace(/^x [<>≤≥] /, "") : q.answer;
       assert.ok(Number.isInteger(Number(value)), `${q.id}: ${q.answer}`);
+    } else if (q.concept === "factorising") {
+      // "3(2x + 3)", "(x + 2)(x - 5)"
+      assert.match(q.answer, /^(\d+\(\d*x \+ \d+\)|\(x [+-] \d+\)\(x [+-] \d+\))$/, q.id);
+      assert.doesNotMatch(q.question, /\b1x/, `${q.id} writes x, not 1x`);
     } else {
       assert.match(q.answer, /^\d*x( [+-] \d+)?$/, q.id);
       assert.doesNotMatch(q.question, /\b1x/, `${q.id} writes x, not 1x`);

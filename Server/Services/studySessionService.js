@@ -51,6 +51,11 @@ const MISCONCEPTION_LABELS = {
     inequality_flip: "Inequality sign the wrong way round",
     lost_a_solution: "Lost a solution",
     invalid_step: "Step doesn't follow",
+    not_factorised: "Not factorised",
+    not_fully_factorised: "Not fully factorised",
+    factor_out_one_term: "Common factor taken from one term only",
+    factor_sign_error: "Signs wrong in the brackets",
+    wrong_factor_pair: "Wrong pair of factors",
     invalid_transformation: "Invalid step",
     unknown_error: "Unknown error"
 };

@@ -647,6 +647,47 @@ const questions = [
         id: "sm_002", question: "Solve: 2x + y = 11 and x + 3y = 13", concept: "simultaneous_equations", difficulty: 3, answer: "x = 4, y = 3",
         solution_steps: ["Make x the subject of the second equation", "x = 13 - 3y", "Substitute into the first equation", "2(13 - 3y) + y = 11", "26 - 5y = 11", "y = 3", "x = 4"],
         explanation: "Write x in terms of y from one equation, then substitute it into the other."
+    },
+
+
+    // ========================================================
+    // FACTORISING (checked by value: factorising.js)
+    // ========================================================
+
+    {
+        id: "fc_001", question: "Factorise: 6x + 9", concept: "factorising", difficulty: 1, answer: "3(2x + 3)",
+        solution_steps: ["The highest common factor of 6 and 9 is 3", "Divide each term by 3", "3(2x + 3)"],
+        explanation: "Take out 3 and divide every term by it. Expanding 3(2x + 3) gives back 6x + 9."
+    },
+    {
+        id: "fc_002", question: "Factorise: 12x + 8", concept: "factorising", difficulty: 1, answer: "4(3x + 2)",
+        solution_steps: ["The highest common factor of 12 and 8 is 4", "Divide each term by 4", "4(3x + 2)"],
+        explanation: "2 is a common factor too, but 4 is the highest. 2(6x + 4) still has a 2 inside."
+    },
+    {
+        id: "fc_003", question: "Factorise: x² + 5x + 6", concept: "factorising", difficulty: 2, answer: "(x + 2)(x + 3)",
+        solution_steps: ["Find two numbers that multiply to 6 and add to 5: 2 and 3", "(x + 2)(x + 3)"],
+        explanation: "2 × 3 = 6 and 2 + 3 = 5."
+    },
+    {
+        id: "fc_004", question: "Factorise: x² + 2x - 15", concept: "factorising", difficulty: 3, answer: "(x + 5)(x - 3)",
+        solution_steps: ["Find two numbers that multiply to -15 and add to 2: 5 and -3", "(x + 5)(x - 3)"],
+        explanation: "5 × -3 = -15 and 5 + -3 = 2. The bigger number takes the sign of the x term."
+    },
+    {
+        id: "fc_005", question: "Factorise: x² - 49", concept: "factorising", difficulty: 3, answer: "(x + 7)(x - 7)",
+        solution_steps: ["x² - 49 is a difference of two squares: x² - 7²", "(x + 7)(x - 7)"],
+        explanation: "a² - b² = (a + b)(a - b). Here a = x and b = 7."
+    },
+    {
+        id: "fc_006", question: "Factorise: 10x + 15", concept: "factorising", difficulty: 1, answer: "5(2x + 3)",
+        solution_steps: ["The highest common factor of 10 and 15 is 5", "Divide each term by 5", "5(2x + 3)"],
+        explanation: "Take out 5 and divide both terms by it: 10x ÷ 5 = 2x and 15 ÷ 5 = 3."
+    },
+    {
+        id: "fc_007", question: "Factorise: x² - 2x - 8", concept: "factorising", difficulty: 3, answer: "(x - 4)(x + 2)",
+        solution_steps: ["Find two numbers that multiply to -8 and add to -2: -4 and 2", "(x - 4)(x + 2)"],
+        explanation: "-4 × 2 = -8 and -4 + 2 = -2."
     }
 
 ];

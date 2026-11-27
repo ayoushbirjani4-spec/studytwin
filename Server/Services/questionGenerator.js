@@ -273,6 +273,33 @@ const simultaneousTemplate = (a, b, x, y) => {
     };
 };
 
+// Factorising. Answers are written the way they're checked: by value.
+const gcd = (a, b) => (b === 0 ? Math.abs(a) : gcd(b, a % b));
+const signed = (n) => (n >= 0 ? ` + ${n}` : ` - ${-n}`);
+const bracketOf = (r) => `(x${signed(r)})`;
+
+// 6x + 9 -> 3(2x + 3)
+const commonFactorTemplate = (k, a, b) => ({
+    question: `Factorise: ${term(k * a)} + ${k * b}`,
+    concept: "factorising",
+    answer: `${k}(${term(a)} + ${b})`,
+    solution_steps: [`The highest common factor of ${k * a} and ${k * b} is ${k}`, `Divide each term by ${k}`, `${k}(${term(a)} + ${b})`],
+    explanation: `Take out ${k}, the highest common factor, and divide every term by it. Expanding ${k}(${term(a)} + ${b}) gives back the question.`
+});
+
+// (x + p)(x + q) = x² + (p + q)x + pq
+const factorPairTemplate = (p, q) => {
+    const b = p + q, c = p * q;
+    const bx = b === 0 ? "" : b > 0 ? ` + ${term(b)}` : ` - ${term(-b)}`;
+    return {
+        question: `Factorise: x²${bx}${signed(c)}`,
+        concept: "factorising",
+        answer: `${bracketOf(p)}${bracketOf(q)}`,
+        solution_steps: [`Find two numbers that multiply to ${c} and add to ${b}: ${p} and ${q}`, `${bracketOf(p)}${bracketOf(q)}`],
+        explanation: `${p} × ${q} = ${c} and ${p} + ${q} = ${b}, so the brackets are ${bracketOf(p)}${bracketOf(q)}.`
+    };
+};
+
 function simplifyQuestion(terms, xTotal, constantTotal) {
     const text = terms
         .map((t, i) => (i === 0 ? t : t.startsWith("-") ? `- ${t.slice(1)}` : `+ ${t}`))
@@ -389,6 +416,23 @@ const TEMPLATES = {
         }) },
     sm2: { concept: "simultaneous_equations", difficulty: 3, params: [[2, 5], [2, 5], [1, 8], [1, 8]],
         build: simultaneousTemplate },
+
+    // Factorising (checked by value: factorising.js)
+    fc1: { concept: "factorising", difficulty: 1, params: [[2, 9], [1, 5], [1, 9]],                  // k·a·x + k·b -> k(ax + b)
+        valid: (k, a, b) => gcd(a, b) === 1,
+        build: commonFactorTemplate },
+    fc2: { concept: "factorising", difficulty: 2, params: [[1, 9], [1, 9]], valid: (p, q) => p < q,    // (x + p)(x + q)
+        build: (p, q) => factorPairTemplate(p, q) },
+    fc3: { concept: "factorising", difficulty: 3, params: [[1, 9], [1, 9]], valid: (p, q) => p !== q,  // (x + p)(x - q)
+        build: (p, q) => factorPairTemplate(p, -q) },
+    fc4: { concept: "factorising", difficulty: 3, params: [[2, 20]],                                  // x² - k² -> (x + k)(x - k)
+        build: (k) => ({
+            question: `Factorise: x² - ${k * k}`,
+            concept: "factorising",
+            answer: `(x + ${k})(x - ${k})`,
+            solution_steps: [`x² - ${k * k} is a difference of two squares: x² - ${k}²`, `(x + ${k})(x - ${k})`],
+            explanation: `a² - b² = (a + b)(a - b). Here a = x and b = ${k}.`
+        }) },
 
     // Word problems
     wp1: { concept: "word_problems", difficulty: 1, params: [[2, 5], [2, 6], [2, 12]],
@@ -544,7 +588,10 @@ const TRAPS = {
     combining_unlike_terms: ["clt3", "clt4", "clt5"],
     // Their own rules: dividing by a negative, and keeping both solutions.
     inequality_flip: ["iq3", "iq4"],
-    lost_a_solution: ["qd1", "qd2", "qd3", "qd4"]
+    lost_a_solution: ["qd1", "qd2", "qd3", "qd4"],
+    // Factorising (factorising.js): the mistakes the twin can always show.
+    factor_out_one_term: ["fc1"],
+    factor_sign_error: ["fc2", "fc3"]
 };
 
 // What the trap was set to catch, shown once the student has answered.
@@ -556,7 +603,9 @@ const TRAP_NOTES = {
     wrong_inverse_op: "This one was set to catch undoing a step with the wrong operation.",
     one_sided_op: "This one was set to catch changing only one side of the equation.",
     arithmetic_slip: "This one was set to catch a slip in the arithmetic.",
-    combining_unlike_terms: "This one was set to catch adding x terms and numbers together."
+    combining_unlike_terms: "This one was set to catch adding x terms and numbers together.",
+    factor_out_one_term: "This one was set to catch dividing only one term by the common factor.",
+    factor_sign_error: "This one was set to catch getting the signs in the brackets the wrong way round."
 };
 
 // A trap for this mistake in this topic. When the mistake can't show in

@@ -37,6 +37,7 @@ const customQuestions = require("./Services/customQuestions");
 const demoClass = require("./Services/demoClass");
 const inequalities = require("./Services/inequalities");
 const solutionChecker = require("./Services/solutionChecker");
+const factorising = require("./Services/factorising");
 const { createAnswerRateLimiter } = require("./middleware/rateLimit");
 const { serviceStatus } = require("./middleware/serviceErrors");
 
@@ -690,6 +691,10 @@ function gradeTwinCorrection(questionId, previousLine, correctedLine) {
     }
     if (question && question.concept === "quadratics") {
         return solutionChecker.judgeLine(question, corrected) === "valid";
+    }
+    // Factorising: the fix is the right, fully factorised answer.
+    if (question && factorising.handles(question)) {
+        return factorising.answersMatch(corrected, question.answer);
     }
 
     const check = misconceptionService.checkSteps({
