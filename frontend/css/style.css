@@ -878,6 +878,7 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2);
 .copy-row { display: flex; gap: 8px; align-items: center; min-width: 0; margin: 8px 0 16px; }
 .copy-row code { flex: 1; min-width: 0; padding: 8px 12px; border-radius: var(--r-control); background: var(--raised); font-size: 13px; overflow-wrap: anywhere; }
 .join-help .copy-row { margin-bottom: 0; }
+.join-help .join-status { margin: 10px 0 0; font-size: 13px; }
 .teacher-metrics { margin-bottom: 16px; }
 .teacher-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 .teacher-row:first-child { border-top: 0; }

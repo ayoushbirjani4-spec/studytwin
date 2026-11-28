@@ -193,6 +193,18 @@ async function setQuestions(code, ids) {
   await (await getCollection()).updateOne({ _id: clean }, { $set: { questions: list } });
 }
 
+// Joining: a teacher can close the class to new students (students already
+// in it are unaffected). Stored as joinsClosed, so old classes stay open.
+async function setJoinsClosed(code, closed) {
+  const clean = normaliseCode(code);
+  if (useMemoryStore()) {
+    const found = memoryClasses.get(clean);
+    if (found) found.joinsClosed = Boolean(closed);
+    return;
+  }
+  await (await getCollection()).updateOne({ _id: clean }, { $set: { joinsClosed: Boolean(closed) } });
+}
+
 function clearMemoryClasses() {
   memoryClasses.clear();
 }
@@ -203,5 +215,6 @@ module.exports = {
   addAssignment, removeAssignment,
   setQuestions, MAX_QUESTIONS,
   setStudy,
+  setJoinsClosed,
   clearMemoryClasses
 };

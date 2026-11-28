@@ -210,7 +210,7 @@ async function buildClassReport(classRecord, { now = Date.now() } = {}) {
     }
 
     return {
-        class: { code: classRecord.code, name: classRecord.name, createdAt: classRecord.createdAt },
+        class: { code: classRecord.code, name: classRecord.name, createdAt: classRecord.createdAt, joinsClosed: Boolean(classRecord.joinsClosed) },
         generatedAt: new Date(now).toISOString(),
         totals: {
             students: students.length,

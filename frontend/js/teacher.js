@@ -133,7 +133,7 @@ function renderStudents(students) {
       <td>${s.hintsPerAnswer === null ? `<span class="muted">–</span>` : `${s.hintsPerAnswer} per answer`}</td>
       <td>${s.stuckOn ? `<span class="mistake-tag">${escapeHtml(s.stuckOn.label)}</span>` : `<span class="muted">–</span>`}</td>
       <td>${s.cured.length ? s.cured.map((c) => escapeHtml(c.label)).join(", ") : `<span class="muted">–</span>`}</td>
-      <td><button class="text-button print-student" type="button" data-id="${escapeHtml(s.id)}">Print</button> <button class="text-button parent-link" type="button" data-id="${escapeHtml(s.id)}">Parent link</button></td>
+      <td><button class="text-button print-student" type="button" data-id="${escapeHtml(s.id)}">Print</button> <button class="text-button parent-link" type="button" data-id="${escapeHtml(s.id)}">Parent link</button> <button class="text-button student-remove" type="button" data-id="${escapeHtml(s.id)}" data-name="${escapeHtml(s.name)}">Remove</button></td>
     </tr>
   `).join("");
 }
@@ -186,6 +186,12 @@ function renderReport(report) {
   $("reportUpdated").textContent = `Updated ${new Date(report.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   $("classCode").textContent = report.class.code;
   $("joinLink").textContent = `${location.origin}/?class=${report.class.code}`;
+  const closed = Boolean(report.class.joinsClosed);
+  $("joinStatus").textContent = closed
+    ? "Closed to new students. Students already in the class carry on as normal."
+    : "Open: anyone with the code can join.";
+  $("joinToggle").textContent = closed ? "Open to new students" : "Close to new students";
+  $("joinToggle").dataset.open = closed ? "true" : "false";
 
   $("metricStudents").textContent = report.totals.students;
   $("metricActive").textContent = `${report.totals.activeThisWeek} active this week`;
@@ -785,6 +791,37 @@ $("studentsTable").addEventListener("click", async (event) => {
       <p>Parent link for <strong>${escapeHtml(data.name)}</strong>. Anyone with it can see this report, so send it only to the family. Making a new link switches this one off.</p>
       <div class="copy-row"><code id="parentLinkText">${escapeHtml(link)}</code><button class="ghost-button" type="button" data-copy="parentLinkText">Copy</button></div>`;
     $("parentLinkBox").classList.remove("hidden");
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+// Joining: close the class once everyone is in, so a removed student or
+// someone who was passed the code can't (re)join.
+$("joinToggle").addEventListener("click", async () => {
+  try {
+    await api(`/api/classes/${encodeURIComponent(state.current.code)}/joining`, {
+      method: "POST", key: state.current.key, body: { open: $("joinToggle").dataset.open === "true" }
+    });
+    openClass(state.current);
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+// Remove a student: they leave the class (and their parent link stops
+// working), but keep their own practice and can rejoin with the code.
+$("studentsTable").addEventListener("click", async (event) => {
+  const button = event.target.closest(".student-remove");
+  if (!button) return;
+  const name = button.dataset.name || "this student";
+  if (!confirm(`Remove ${name} from the class? They'll drop out of your reports and their parent link will stop working. They keep their own practice and can rejoin with the class code.`)) return;
+  try {
+    await api(`/api/classes/${encodeURIComponent(state.current.code)}/students/${encodeURIComponent(button.dataset.id)}`, {
+      method: "DELETE",
+      key: state.current.key
+    });
+    openClass(state.current);
   } catch (error) {
     showError(error.message);
   }

@@ -1397,6 +1397,14 @@ app.post("/api/students/:studentId/class", stepCheckRateLimiter, async (req, res
             if (!classRecord) {
                 return res.status(404).json({ success: false, error: "No class has that code. Check it with your teacher." });
             }
+            // A closed class takes no new students; anyone already in it can
+            // still change the name they're shown by.
+            if (classRecord.joinsClosed) {
+                const current = await studentStore.get(req.params.studentId);
+                if (current?.classCode !== classRecord.code) {
+                    return res.status(403).json({ success: false, error: "This class isn't taking new students right now. Ask your teacher." });
+                }
+            }
         }
         const result = await studySessionService.joinClass({
             studentId: req.params.studentId,
@@ -1407,6 +1415,21 @@ app.post("/api/students/:studentId/class", stepCheckRateLimiter, async (req, res
         res.json({ success: true, ...result, className: classRecord?.name || null });
     } catch (error) {
         sendServiceError(res, error, "Unable to join the class.");
+    }
+});
+
+// POST /api/classes/:code/joining   teacher: { open: true | false }
+app.post("/api/classes/:code/joining", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        if (typeof req.body?.open !== "boolean") {
+            return res.status(400).json({ success: false, error: "Say whether the class is open to new students." });
+        }
+        await classStore.setJoinsClosed(classRecord.code, !req.body.open);
+        res.json({ success: true, joinsClosed: !req.body.open });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to change who can join.");
     }
 });
 
@@ -1594,6 +1617,42 @@ app.post("/api/parent", stepCheckRateLimiter, async (req, res) => {
         });
     } catch (error) {
         sendServiceError(res, error, "Unable to load the report.");
+    }
+});
+
+
+// ============================================================
+// REMOVE A STUDENT
+// ============================================================
+//
+// DELETE /api/classes/:code/students/:id   teacher: id is the short id
+//
+// The same as the student leaving: they drop out of the report, polls and
+// homework, and their parent link stops working. Their own practice and
+// progress are kept; they can rejoin with the class code.
+//
+// ============================================================
+
+app.delete("/api/classes/:code/students/:id", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const shortId = String(req.params.id || "");
+        const matches = shortId.length >= 6
+            ? (await studentStore.listByClass(classRecord.code)).filter((s) => s.studentId.endsWith(shortId))
+            : [];
+        if (matches.length !== 1) {
+            return res.status(404).json({ success: false, error: "That student isn't in this class." });
+        }
+        const student = await studentStore.get(matches[0].studentId);
+        student.classCode = null;
+        student.displayName = null;
+        student.joinedClassAt = null;
+        student.parentKeyHash = null;
+        await studentStore.save(student);
+        res.json({ success: true });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to remove the student.");
     }
 });
 
