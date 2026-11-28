@@ -995,6 +995,14 @@ a.nav-item { text-decoration: none; color: inherit; }
 /* Printable reports: hidden on screen; on paper, only the report shows. */
 .print-area { display: none; }
 @media print {
+  .sheet-intro { margin: 8pt 0 10pt !important; font-size: 10pt; color: #333; }
+  .sheet-questions { margin: 0; padding-left: 16pt; }
+  .sheet-questions li { break-inside: avoid; margin: 0 0 6pt; }
+  .sheet-question { margin: 0 !important; font-size: 12pt; font-weight: 600; }
+  .sheet-link { margin: 1pt 0 0 !important; font-family: "JetBrains Mono", monospace; font-size: 8pt; color: #555; }
+  .sheet-work { height: 78pt; border-bottom: 0.5pt solid #ccc; }
+}
+@media print {
   body > *:not(.print-area) { display: none !important; }
   body { background: #fff !important; }
   .print-area { display: block; color: #111; font-family: Figtree, system-ui, sans-serif; font-size: 11pt; }

@@ -696,6 +696,68 @@ $("studentsTable").addEventListener("click", (event) => {
   printReports((state.report?.students || []).filter((s) => s.id === button.dataset.id), false);
 });
 
+// ------------------------------------------------------------
+// Personalised practice sheets: one per student from their own mistakes,
+// then an answer key. Each question's link opens it in StudyTwin, where
+// the student can type or photograph their working to have it checked.
+// ------------------------------------------------------------
+
+const sheetAnswer = (answer) => (/^-?[\d./]+$/.test(answer) ? `x = ${answer}` : answer);
+
+function practiceSheetsHtml(data) {
+  const date = shortDate(data.date);
+  const sheets = data.sheets.map((sheet) => `
+    <section class="print-page practice-sheet">
+      <header class="print-head">
+        <div><p class="print-kicker">StudyTwin practice sheet</p><h1>${escapeHtml(sheet.name)}</h1></div>
+        <p>${escapeHtml(data.className)}<br>${escapeHtml(date)}</p>
+      </header>
+      <p class="sheet-intro">These questions were picked for you. Show your working, one step per line. To have your working checked, open a question's link in StudyTwin and type it in or add a photo.</p>
+      <ol class="sheet-questions">${sheet.questions.map((q) => `
+        <li>
+          <p class="sheet-question">${escapeHtml(q.question)}</p>
+          <p class="sheet-link">Check it: ${escapeHtml(`${location.origin}/?q=${q.id}`)}</p>
+          <div class="sheet-work"></div>
+        </li>`).join("")}
+      </ol>
+    </section>`).join("");
+
+  const key = `
+    <section class="print-page">
+      <header class="print-head">
+        <div><p class="print-kicker">StudyTwin practice sheets</p><h1>Answer key</h1></div>
+        <p>${escapeHtml(data.className)}<br>${escapeHtml(date)}</p>
+      </header>
+      ${data.sheets.map((sheet) => `
+        <h2>${escapeHtml(sheet.name)}</h2>
+        <table><thead><tr><th>#</th><th>Question</th><th>Answer</th><th>Aimed at</th></tr></thead><tbody>${sheet.questions.map((q, i) => `
+          <tr><td>${i + 1}</td><td>${escapeHtml(q.question)}</td><td>${escapeHtml(sheetAnswer(q.answer))}</td><td>${escapeHtml(q.reason || "–")}</td></tr>`).join("")}
+        </tbody></table>`).join("")}
+    </section>`;
+  return sheets + key;
+}
+
+$("printSheetsButton").addEventListener("click", async () => {
+  if (!state.current) return;
+  const button = $("printSheetsButton");
+  button.disabled = true;
+  button.textContent = "Making sheets…";
+  try {
+    const data = await api(`/api/classes/${encodeURIComponent(state.current.code)}/practice-sheets`, { key: state.current.key });
+    if (!data.sheets.length) {
+      showError("No students have joined yet, so there are no sheets to print.");
+      return;
+    }
+    $("printArea").innerHTML = practiceSheetsHtml(data);
+    window.print();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Print practice sheets";
+  }
+});
+
 // Installable app: works offline for pages; answers still need the network (see sw.js).
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("/sw.js").catch(() => {});

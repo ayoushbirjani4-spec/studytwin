@@ -1187,7 +1187,11 @@ async function startSession({
 
     // Daily warm-up, and the student's own date ("2026-11-22").
     warmup = false,
-    localDate = null
+    localDate = null,
+
+    // A question link (?q= on a printed practice sheet): start on exactly
+    // that question, in its own topic.
+    questionId = null
 
 }) {
 
@@ -1196,6 +1200,16 @@ async function startSession({
         throw requestError(
             "studentId is required."
         );
+    }
+
+    const linked = questionId ? questionService.findQuestionById(String(questionId).slice(0, 60)) : null;
+    if (questionId && !linked) {
+        throw requestError("That question link doesn't work. Check it against your sheet.", 404);
+    }
+    if (linked) {
+        concept = linked.concept;
+        warmup = false;
+        misconceptionType = null;
     }
 
 
@@ -1257,7 +1271,9 @@ async function startSession({
         student.warmup = { date: localDate, questionIds: planWarmup(student), done: 0 };
     }
 
-    const question = warmup
+    const question = linked
+        ? linked
+        : warmup
         ? questionService.findQuestionById(student.warmup.questionIds[0])
         : concept === customQuestions.CONCEPT
         ? await nextClassQuestion(student, null, state.recentQuestionIds)

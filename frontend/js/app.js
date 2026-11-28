@@ -471,7 +471,7 @@ async function loadConcepts() {
   }
 }
 
-async function startSession({ misconceptionType = null, warmup = false } = {}) {
+async function startSession({ misconceptionType = null, warmup = false, questionId = null } = {}) {
   const concept = $("conceptSelect").value;
   const difficulty =
     Number($("difficultySelect").value);
@@ -494,7 +494,8 @@ async function startSession({ misconceptionType = null, warmup = false } = {}) {
         concept,
         difficulty,
         ...(misconceptionType ? { misconceptionType } : {}),
-        ...(warmup ? { warmup: true, localDate: localToday() } : {})
+        ...(warmup ? { warmup: true, localDate: localToday() } : {}),
+        ...(questionId ? { questionId } : {})
       })
     });
 
@@ -506,6 +507,10 @@ async function startSession({ misconceptionType = null, warmup = false } = {}) {
 
     state.concept = data.concept;
     state.difficulty = data.difficulty;
+    // A question link can start in another topic: keep the picker in step.
+    if ([...$("conceptSelect").options].some((option) => option.value === data.concept)) {
+      $("conceptSelect").value = data.concept;
+    }
     state.targetedPractice = data.targetedPractice || null;
     state.warmup = data.warmup || null;
     state.questionNumber = 1;
@@ -1950,6 +1955,19 @@ function prefillClassFromLink() {
   $("classJoin").open = true;
 }
 
+// A question link from a printed practice sheet: ?q=g_dp1_2_3_4 opens that
+// exact question, so the student can type or photograph their paper working.
+// The link is taken out of the address afterwards, so a reload doesn't repeat it.
+function startFromQuestionLink() {
+  const params = new URLSearchParams(location.search);
+  const questionId = params.get("q");
+  if (!questionId) return;
+  params.delete("q");
+  const rest = params.toString();
+  history.replaceState(null, "", location.pathname + (rest ? `?${rest}` : "") + location.hash);
+  startSession({ questionId: questionId.slice(0, 60) });
+}
+
 // Homework from the student's class: what is left, and what is done.
 function renderStudentHomework(homework) {
   const now = new Date();
@@ -2132,6 +2150,7 @@ $("homeworkItems").addEventListener("click", (event) => {
 });
 $("leaveClassButton").addEventListener("click", leaveClass);
 prefillClassFromLink();
+startFromQuestionLink();
 
 // Installable app: works offline for pages; answers still need the network (see sw.js).
 if ("serviceWorker" in navigator && location.protocol !== "file:") {

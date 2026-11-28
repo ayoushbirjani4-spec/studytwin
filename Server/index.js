@@ -33,6 +33,7 @@ const attemptLogStore = require("./Services/attemptLogStore");
 const llmReviewService = require("./Services/llmReviewService");
 const classStore = require("./Services/classStore");
 const classReportService = require("./Services/classReportService");
+const practiceSheetService = require("./Services/practiceSheetService");
 const customQuestions = require("./Services/customQuestions");
 const demoClass = require("./Services/demoClass");
 const inequalities = require("./Services/inequalities");
@@ -1415,6 +1416,32 @@ app.post("/api/students/:studentId/class", stepCheckRateLimiter, async (req, res
         res.json({ success: true, ...result, className: classRecord?.name || null });
     } catch (error) {
         sendServiceError(res, error, "Unable to join the class.");
+    }
+});
+
+// GET /api/classes/:code/practice-sheets   teacher: one personalised sheet
+// per student, from their own mistakes (see practiceSheetService).
+app.get("/api/classes/:code/practice-sheets", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const date = new Date().toISOString().slice(0, 10);
+        const members = (await studentStore.listByClass(classRecord.code))
+            .sort((a, b) => String(a.displayName || "").localeCompare(String(b.displayName || "")));
+        const sheets = [];
+        for (const member of members) {
+            const student = await studentStore.get(member.studentId);
+            const rows = (await attemptLogStore.listAttempts({ studentId: member.studentId, limit: 200 }))
+                .filter((row) => row && row.createdAt)
+                .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            sheets.push({
+                name: student.displayName || "Student",
+                questions: practiceSheetService.planSheet(student, rows, `${member.studentId}:${date}`)
+            });
+        }
+        res.json({ success: true, className: classRecord.name, date, sheets });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to make the practice sheets.");
     }
 });
 
