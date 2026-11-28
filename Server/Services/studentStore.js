@@ -166,6 +166,20 @@ async function listByClass(classCode) {
   return students.map(({ _id, ...record }) => ({ ...record, studentId: _id, concepts: record.concepts || {} }));
 }
 
+// Take a student out of their class, as if they had left: they drop out of
+// its report, polls and homework, and their parent link stops working.
+// Their own practice and progress are kept.
+async function leaveClass(studentId) {
+  const student = await get(studentId);
+  if (!student) return false;
+  student.classCode = null;
+  student.displayName = null;
+  student.joinedClassAt = null;
+  student.parentKeyHash = null;
+  await save(student);
+  return true;
+}
+
 function clearMemoryRecords() {
   memoryRecords.clear();
 }
@@ -176,6 +190,7 @@ module.exports = {
   save,
   remove,
   listByClass,
+  leaveClass,
   clearMemoryRecords,
   useMemoryStore
 };

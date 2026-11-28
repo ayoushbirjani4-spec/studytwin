@@ -891,6 +891,8 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2);
 .copy-row code { flex: 1; min-width: 0; padding: 8px 12px; border-radius: var(--r-control); background: var(--raised); font-size: 13px; overflow-wrap: anywhere; }
 .join-help .copy-row { margin-bottom: 0; }
 .join-help .join-status { margin: 10px 0 0; font-size: 13px; }
+.delete-class-card p { margin: 6px 0 12px; }
+.danger-button { color: var(--wrong); border-color: var(--wrong); }
 .teacher-metrics { margin-bottom: 16px; }
 .teacher-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 .teacher-row:first-child { border-top: 0; }

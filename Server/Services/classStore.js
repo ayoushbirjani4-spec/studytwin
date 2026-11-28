@@ -45,12 +45,14 @@ function normaliseCode(code) {
   return clean.length === CODE_LENGTH && [...clean].every((c) => CODE_ALPHABET.includes(c)) ? clean : null;
 }
 
-async function create({ name }) {
+async function create({ name, demo = false }) {
   const teacherKey = randomBytes(24).toString("base64url");
   const record = {
     name: String(name || "").trim().slice(0, 60) || "My class",
     teacherKeyHash: hashKey(teacherKey),
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    // Sample classes are cleaned up after a day (see demoClass.js).
+    ...(demo ? { demo: true } : {})
   };
 
   // A clash is very unlikely (31^6 codes), but retry rather than overwrite.
@@ -205,6 +207,30 @@ async function setJoinsClosed(code, closed) {
   await (await getCollection()).updateOne({ _id: clean }, { $set: { joinsClosed: Boolean(closed) } });
 }
 
+// Deleting a class: its record only. Its students are detached first by
+// the caller (their own practice is theirs and is kept).
+async function remove(code) {
+  const clean = normaliseCode(code);
+  if (!clean) return false;
+  if (useMemoryStore()) return memoryClasses.delete(clean);
+  const result = await (await getCollection()).deleteOne({ _id: clean });
+  return result.deletedCount > 0;
+}
+
+// Sample classes made before `beforeIso`, for clean-up.
+async function listDemoClassesBefore(beforeIso) {
+  if (useMemoryStore()) {
+    return [...memoryClasses.values()]
+      .filter((c) => c.demo && c.createdAt < beforeIso)
+      .map((c) => c.code);
+  }
+  const found = await (await getCollection())
+    .find({ demo: true, createdAt: { $lt: beforeIso } }, { projection: { _id: 1 } })
+    .limit(200)
+    .toArray();
+  return found.map((c) => c._id);
+}
+
 function clearMemoryClasses() {
   memoryClasses.clear();
 }
@@ -216,5 +242,6 @@ module.exports = {
   setQuestions, MAX_QUESTIONS,
   setStudy,
   setJoinsClosed,
+  remove, listDemoClassesBefore,
   clearMemoryClasses
 };

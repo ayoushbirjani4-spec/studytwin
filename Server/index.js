@@ -35,6 +35,7 @@ const classStore = require("./Services/classStore");
 const classReportService = require("./Services/classReportService");
 const practiceSheetService = require("./Services/practiceSheetService");
 const mistakeReviewService = require("./Services/mistakeReviewService");
+const classCleanup = require("./Services/classCleanup");
 const customQuestions = require("./Services/customQuestions");
 const demoClass = require("./Services/demoClass");
 const inequalities = require("./Services/inequalities");
@@ -1689,15 +1690,39 @@ app.delete("/api/classes/:code/students/:id", stepCheckRateLimiter, async (req, 
         if (matches.length !== 1) {
             return res.status(404).json({ success: false, error: "That student isn't in this class." });
         }
-        const student = await studentStore.get(matches[0].studentId);
-        student.classCode = null;
-        student.displayName = null;
-        student.joinedClassAt = null;
-        student.parentKeyHash = null;
-        await studentStore.save(student);
+        await studentStore.leaveClass(matches[0].studentId);
         res.json({ success: true });
     } catch (error) {
         sendServiceError(res, error, "Unable to remove the student.");
+    }
+});
+
+
+// ============================================================
+// DELETE A CLASS
+// ============================================================
+//
+// DELETE /api/classes/:code   teacher: { name } typed to confirm
+//
+// For the end of the year: every student leaves the class (as with
+// "Remove"), their parent links stop working, and the class record (its
+// questions, homework and polls) is deleted. Each student's own practice
+// is theirs and is kept. Sample students in a demo class are deleted.
+//
+// ============================================================
+
+app.delete("/api/classes/:code", stepCheckRateLimiter, async (req, res) => {
+    try {
+        const classRecord = await loadClassForTeacher(req, res);
+        if (!classRecord) return;
+        const typed = String(req.body?.name || "").trim().toLowerCase();
+        if (typed !== String(classRecord.name).trim().toLowerCase()) {
+            return res.status(400).json({ success: false, error: "Type the class name exactly to delete it." });
+        }
+        const removed = await classCleanup.closeClass(classRecord.code);
+        res.json({ success: true, studentsRemoved: removed });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to delete the class.");
     }
 });
 

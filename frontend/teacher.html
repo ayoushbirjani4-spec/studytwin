@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261128-6" />
+  <link rel="stylesheet" href="./css/style.css?v=20261128-7" />
 </head>
 <body>
   <div class="teacher-page">
@@ -170,6 +170,12 @@
         <div id="curesSummary" class="evidence-cures"></div>
         <p class="evidence-caveat">There's no comparison group here, and mistakes often fade with practice anyway, so treat these numbers as a signal, not proof. A fair two-week study is described in STUDY.md in the project.</p>
       </div>
+
+      <div class="profile-card delete-class-card">
+        <div class="card-title">Delete this class</div>
+        <p class="muted">For the end of the year. Every student leaves the class and their parent links stop working; the class's questions, homework and polls are deleted. Students keep their own practice. This can't be undone, so download the answers first if you need them.</p>
+        <button id="deleteClassButton" class="ghost-button danger-button" type="button">Delete class…</button>
+      </div>
     </section>
     <!-- Class twin: a starter activity for the projector -->
     <section id="classTwinPanel" class="class-twin hidden">
@@ -206,7 +212,7 @@
   <!-- Filled just before printing; hidden on screen. -->
   <div id="printArea" class="print-area"></div>
 
-  <script src="./js/report.js?v=20261128-6"></script>
-  <script src="./js/teacher.js?v=20261128-6"></script>
+  <script src="./js/report.js?v=20261128-7"></script>
+  <script src="./js/teacher.js?v=20261128-8"></script>
 </body>
 </html>

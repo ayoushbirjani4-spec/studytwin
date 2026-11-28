@@ -12,6 +12,7 @@ const { randomUUID } = require("node:crypto");
 const classStore = require("./classStore");
 const studentStore = require("./studentStore");
 const attemptLogStore = require("./attemptLogStore");
+const classCleanup = require("./classCleanup");
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -27,7 +28,11 @@ const STUDENTS = [
 ];
 
 async function createDemoClass(now = Date.now()) {
-    const created = await classStore.create({ name: "Sample class (demo)" });
+    // Sample classes last a day: tidy up older ones first. A failure here
+    // mustn't stop the demo from opening.
+    await classCleanup.cleanUpOldDemos(now).catch((error) => console.error("Demo clean-up failed:", error.message));
+
+    const created = await classStore.create({ name: "Sample class (demo)", demo: true });
 
     for (const [index, s] of STUDENTS.entries()) {
         const studentId = `demo_${randomUUID()}`;

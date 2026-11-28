@@ -232,7 +232,7 @@ function renderSwitcher() {
   switcher.classList.toggle("hidden", state.classes.length === 0);
   switcher.innerHTML = [
     ...state.classes.map((c) => `<option value="${escapeHtml(c.code)}" ${c.code === state.current?.code ? "selected" : ""}>${escapeHtml(c.name || c.code)}</option>`),
-    `<option value="__new">New or other class…</option>`
+    `<option value="__new" ${state.current ? "" : "selected"}>New or other class…</option>`
   ].join("");
 }
 
@@ -853,6 +853,32 @@ $("studentsTable").addEventListener("click", async (event) => {
       <p>Parent link for <strong>${escapeHtml(data.name)}</strong>. Anyone with it can see this report, so send it only to the family. Making a new link switches this one off.</p>
       <div class="copy-row"><code id="parentLinkText">${escapeHtml(link)}</code><button class="ghost-button" type="button" data-copy="parentLinkText">Copy</button></div>`;
     $("parentLinkBox").classList.remove("hidden");
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+// Delete the class: the teacher types its name to confirm. Afterwards it is
+// forgotten in this browser too, and the page goes back to the start.
+$("deleteClassButton").addEventListener("click", async () => {
+  const entry = state.current;
+  if (!entry) return;
+  const name = state.report?.class?.name || entry.name || "";
+  const typed = prompt(`This deletes "${name}" for good. Every student leaves the class and their parent links stop working; they keep their own practice.\n\nType the class name to confirm:`);
+  if (typed === null) return;
+  if (typed.trim().toLowerCase() !== name.trim().toLowerCase()) {
+    showError("The name didn't match, so nothing was deleted.");
+    return;
+  }
+  try {
+    await api(`/api/classes/${encodeURIComponent(entry.code)}`, { method: "DELETE", key: entry.key, body: { name: typed } });
+    state.classes = state.classes.filter((c) => c.code !== entry.code);
+    saveClasses();
+    state.current = null;
+    state.report = null;
+    renderSwitcher();
+    show("setupPanel");
+    showError(`"${name}" was deleted.`);
   } catch (error) {
     showError(error.message);
   }
