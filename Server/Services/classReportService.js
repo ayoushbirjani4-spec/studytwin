@@ -14,6 +14,7 @@ const attemptLogStore = require("./attemptLogStore");
 const twinService = require("./twinService");
 const studySessionService = require("./studySessionService");
 const customQuestions = require("./customQuestions");
+const parentTips = require("./parentTips");
 
 const RECENT_WINDOW = 10;     // "stuck" looks at a student's last 10 answers
 const STUCK_THRESHOLD = 3;    // the same mistake 3+ times in those 10
@@ -289,7 +290,12 @@ function toCsv(rows) {
 async function buildStudentReport(student) {
     const rows = chronological(await attemptLogStore.listAttempts({ studentId: student.studentId, limit: ATTEMPTS_PER_STUDENT }));
     const { studentId, twinEffect, ...rest } = summariseStudent(student, rows, Date.now());
-    return { ...rest, twinEffect: twinEffect.map((e) => ({ type: e.type, label: label(e.type), status: e.status, before: e.before, after: e.after })) };
+    // Parent link only: how to help with the mistakes being made most. The
+    // practice question stays the same for the day.
+    const day = new Date().toISOString().slice(0, 10);
+    const helpAtHome = parentTips.helpAtHome(rows, { stuckOn: rest.stuckOn, seed: `${studentId}:${day}` })
+        .map((tip) => ({ ...tip, label: label(tip.type) }));
+    return { ...rest, helpAtHome, twinEffect: twinEffect.map((e) => ({ type: e.type, label: label(e.type), status: e.status, before: e.before, after: e.after })) };
 }
 
 module.exports = { buildClassReport, buildStudentReport, exportClassAttempts, toCsv, STUCK_THRESHOLD, RECENT_WINDOW };

@@ -5,7 +5,7 @@
 //   version (?v=...), so a new release is a new URL and is fetched fresh.
 // - /api: never cached. Answers, progress and votes always go to the server.
 
-const CACHE = "studytwin-v6";
+const CACHE = "studytwin-v7";
 const PAGES = ["/", "/teacher.html", "/vote.html"];
 const NETWORK_TIMEOUT_MS = 3000;
 

@@ -1048,6 +1048,13 @@ a.nav-item { text-decoration: none; color: inherit; }
 .parent-report table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .parent-report th, .parent-report td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
 .parent-report .print-foot, .parent-note { font-size: 13px; color: var(--muted); }
+.parent-report .help-tip { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.parent-report .help-tip h3 { margin: 0 0 4px; font-size: 15px; }
+.parent-report .help-tip h3 .muted { font-weight: 400; font-size: 13px; color: var(--muted); }
+.parent-report .help-tip p { margin: 6px 0; }
+.parent-report .help-example span { display: inline-block; min-width: 64px; color: var(--muted); font-size: 13px; }
+.parent-report .help-tip code { font-family: "JetBrains Mono", monospace; font-size: 13px; }
+.parent-report .help-tip summary { cursor: pointer; color: var(--text); }
 
 /* Daily warm-up */
 .warmup-box { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin: 24px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--ink-soft); }

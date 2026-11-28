@@ -25,6 +25,19 @@
           `<tr><td>${escapeHtml(shortDate(r.createdAt))}</td><td>${escapeHtml(topicName(r.concept))}</td><td>${r.correct ? "Correct" : "Not yet"}</td><td>${escapeHtml(r.mistake || "–")}</td></tr>`).join("")}</tbody></table>`
       : "<p>No answers yet.</p>";
 
+    // Parent link only: the server sends these just for the parent's report.
+    const tips = student.helpAtHome || [];
+    const helpAtHome = tips.length
+      ? `<h2>How to help at home</h2>${tips.map((tip) => `
+          <div class="help-tip">
+            <h3>${escapeHtml(tip.label)} <span class="muted">(${tip.count} of the last 20 answers)</span></h3>
+            <p>${escapeHtml(tip.what)}</p>
+            <p class="help-example"><span>Mistake:</span> <code>${escapeHtml(tip.wrong)}</code><br><span>Right:</span> <code>${escapeHtml(tip.right)}</code></p>
+            <p><strong>What you can do:</strong> ${escapeHtml(tip.help)}</p>
+            ${tip.tryThis ? `<details><summary>Try one together: ${escapeHtml(tip.tryThis.question)}</summary><p>Answer: <code>${escapeHtml(/^-?[\d./]+$/.test(tip.tryThis.answer) ? `x = ${tip.tryThis.answer}` : tip.tryThis.answer)}</code></p></details>` : ""}
+          </div>`).join("")}`
+      : "";
+
     return `
       <section class="print-page">
         <header class="print-head">
@@ -37,6 +50,7 @@
           <div><strong>${student.hintsPerAnswer ?? "–"}</strong><span>hints per answer</span></div>
           <div><strong>${escapeHtml(shortDate(student.lastActive))}</strong><span>last practised</span></div>
         </div>
+        ${helpAtHome}
         <h2>Topics</h2>${topics}
         <h2>Mistakes</h2>
         <p>${student.stuckOn ? `Working on: <strong>${escapeHtml(student.stuckOn.label)}</strong> (${student.stuckOn.count} of the last ${student.stuckOn.outOf} answers).` : "Not stuck on any one mistake right now."}</p>
