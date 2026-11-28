@@ -423,6 +423,18 @@ label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2);
 .live-invalid .live-line { text-decoration: line-through; text-decoration-color: var(--wrong); }
 .live-invalid .live-note { color: var(--wrong); }
 
+/* My mistakes: past wrong answers on the progress page */
+.my-mistakes-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.my-mistakes-head p { margin: 4px 0 0; }
+.my-mistakes { list-style: none; margin: 12px 0 0; padding: 0; }
+.my-mistake { padding: 14px 0; border-top: 1px solid var(--line); }
+.my-mistake-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.my-mistake-question { margin: 0; font-size: 16px; font-weight: 500; }
+.my-mistake-meta { font-size: 13px; color: var(--muted); }
+.my-mistake .live-steps { margin-top: 8px; }
+.my-mistake-answer { margin: 8px 0 0; font-size: 14px; color: var(--text-2); }
+.my-mistake-actions { margin-top: 10px; }
+
 /* ------------------------------------------------------------
    Feedback
    ------------------------------------------------------------ */

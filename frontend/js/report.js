@@ -54,7 +54,7 @@
         <h2>Topics</h2>${topics}
         <h2>Mistakes</h2>
         <p>${student.stuckOn ? `Working on: <strong>${escapeHtml(student.stuckOn.label)}</strong> (${student.stuckOn.count} of the last ${student.stuckOn.outOf} answers).` : "Not stuck on any one mistake right now."}</p>
-        ${mistakes.length ? `<p>In the last 20 answers: ${mistakes.map(([type, n]) => `${escapeHtml(topicName(type))} ×${n}`).join(", ")}.</p>` : ""}
+        ${mistakes.length ? `<p>In the last 20 answers: ${mistakes.map(([type, n]) => `${escapeHtml(student.mistakeLabels?.[type] || topicName(type))} ×${n}`).join(", ")}.</p>` : ""}
         ${student.cured.length ? `<p>Cured in a trap round: ${student.cured.map((c) => `${escapeHtml(c.label)}${c.status === "held" ? " (held at both check-ups)" : c.status === "slipped" ? " (came back since)" : ""}`).join(", ")}.</p>` : ""}
         ${twin.length ? `<h2>Teaching the twin</h2><ul>${twin.map((e) =>
           `<li>${escapeHtml(e.label)}: in ${percent(e.before.rate)} of answers before (${e.before.errors} of ${e.before.attempts}), ${percent(e.after.rate)} since (${e.after.errors} of ${e.after.attempts}).</li>`).join("")}</ul>` : ""}

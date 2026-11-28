@@ -34,6 +34,7 @@ const llmReviewService = require("./Services/llmReviewService");
 const classStore = require("./Services/classStore");
 const classReportService = require("./Services/classReportService");
 const practiceSheetService = require("./Services/practiceSheetService");
+const mistakeReviewService = require("./Services/mistakeReviewService");
 const customQuestions = require("./Services/customQuestions");
 const demoClass = require("./Services/demoClass");
 const inequalities = require("./Services/inequalities");
@@ -1151,6 +1152,23 @@ app.get(
 
     }
 );
+
+
+// GET /api/students/:studentId/mistakes   X-Student-Token
+// The student's own wrong answers to look back over (mistakeReviewService).
+app.get("/api/students/:studentId/mistakes", async (req, res) => {
+    try {
+        const allowed = await verifyStudentToken(req, res, req.params.studentId);
+        if (!allowed) return;
+        // No saved record yet: nothing to show (and nothing is read).
+        if (!(await studentStore.get(req.params.studentId))) {
+            return res.json({ success: true, mistakes: [] });
+        }
+        res.json({ success: true, mistakes: await mistakeReviewService.listMistakes(req.params.studentId) });
+    } catch (error) {
+        sendServiceError(res, error, "Unable to load your mistakes.");
+    }
+});
 
 
 // ============================================================

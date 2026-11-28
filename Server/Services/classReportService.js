@@ -67,6 +67,8 @@ function summariseStudent(student, rows, now) {
             ? { type: stuckType, label: label(stuckType), count: stuckCount, outOf: recent.length }
             : null,
         recentMistakes: countMistakes(last20),
+        // Readable names for those mistakes, for the printed and parent reports.
+        mistakeLabels: Object.fromEntries(Object.keys(countMistakes(last20)).map((type) => [type, label(type)])),
         // For the printed report: mastery by topic, and the latest answers.
         topics: Object.entries(student.concepts || {})
             .filter(([, state]) => state.attempts > 0)

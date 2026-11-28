@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
-  <link rel="stylesheet" href="./css/style.css?v=20261128-4" />
+  <link rel="stylesheet" href="./css/style.css?v=20261128-6" />
 </head>
 <body>
   <!-- Line icons (lucide shapes), referenced with <use> -->
@@ -383,6 +383,17 @@
           </table>
         </div>
 
+        <div id="myMistakesCard" class="profile-card hidden">
+          <div class="my-mistakes-head">
+            <div>
+              <div class="card-title">My mistakes</div>
+              <p class="muted">Your answers that weren't quite right, newest first, with the line that went wrong. Try one again to fix it.</p>
+            </div>
+            <label class="my-mistakes-filter"><span class="sr-only">Show mistakes of one kind</span><select id="myMistakesFilter"><option value="">All mistakes</option></select></label>
+          </div>
+          <ol id="myMistakesList" class="my-mistakes"></ol>
+        </div>
+
         <div class="profile-card recommendation-card"><div class="card-title">Suggestion</div><p id="profileRecommendation">Answer a few questions to build your progress</p></div>
         <p id="dashboardError" class="error-text hidden"></p>
       </section>
@@ -400,7 +411,7 @@
     </div>
   </div>
 
-  <script src="./js/i18n.js?v=20261128-4"></script>
-  <script src="./js/app.js?v=20261128-4"></script>
+  <script src="./js/i18n.js?v=20261128-6"></script>
+  <script src="./js/app.js?v=20261128-6"></script>
 </body>
 </html>

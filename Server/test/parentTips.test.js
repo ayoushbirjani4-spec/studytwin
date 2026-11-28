@@ -36,6 +36,20 @@ test("vague mistakes get no tip, and no mistakes means no section", () => {
   assert.deepEqual(parentTips.helpAtHome([row(null, "quadratics")]), []);
 });
 
+test("the report names recent mistakes by their readable label, not their code", async (t) => {
+  const attemptLogStore = require("../Services/attemptLogStore");
+  const classReportService = require("../Services/classReportService");
+  t.mock.method(attemptLogStore, "listAttempts", async () => [
+    row("factor_sign_error", "factorising"), row("factor_sign_error", "factorising"), row("wrong_inverse_op", "inverse_operations")
+  ]);
+  const report = await classReportService.buildStudentReport({ studentId: "st_labels_1", displayName: "Lee", concepts: {} });
+  assert.deepEqual(report.recentMistakes, { factor_sign_error: 2, wrong_inverse_op: 1 });
+  assert.deepEqual(report.mistakeLabels, {
+    factor_sign_error: "Signs wrong in the brackets",
+    wrong_inverse_op: "Wrong inverse operation"
+  });
+});
+
 test("every mistake that can be practised in a trap round has a tip", () => {
   for (const type of Object.keys(questionGenerator.TRAPS)) {
     assert.ok(parentTips.TIPS[type], `no parent tip for ${type}`);

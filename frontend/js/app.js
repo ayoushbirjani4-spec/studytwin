@@ -1111,6 +1111,9 @@ async function loadDashboard() {
       attemptsCard.classList.add("hidden");
     }
 
+    // Loaded separately: if it fails, the rest of the progress page still shows.
+    loadMyMistakes();
+
   } catch (error) {
     $("dashboardError").textContent =
       error.message;
@@ -1954,6 +1957,67 @@ function prefillClassFromLink() {
   $("classCodeInput").value = code.toUpperCase().slice(0, 8);
   $("classJoin").open = true;
 }
+
+// ------------------------------------------------------------
+// My mistakes: the student's own wrong answers, with the line that went
+// wrong, and a button to try the same question again.
+// ------------------------------------------------------------
+
+let myMistakes = [];
+
+function renderMyMistakes() {
+  const filter = $("myMistakesFilter").value;
+  const shown = filter ? myMistakes.filter((m) => m.mistake?.type === filter) : myMistakes;
+  $("myMistakesList").innerHTML = shown.map((m) => {
+    const when = new Date(m.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    const steps = m.steps.length
+      ? `<ol class="live-steps">${m.steps.map((step, i) => {
+          const kind = i === m.firstErrorIndex ? "live-invalid" : step.status === "valid" ? "live-valid" : "";
+          return `<li class="live-step ${kind}"><span class="live-icon" aria-hidden="true">${i + 1}</span>
+            <div class="live-body"><span class="live-line">${escapeHtml(step.line)}</span>
+            ${i === m.firstErrorIndex ? `<span class="live-note">This is where it went wrong.</span>` : ""}</div></li>`;
+        }).join("")}</ol>`
+      : `<p class="my-mistake-answer">No working was written for this one.</p>`;
+    return `
+      <li class="my-mistake">
+        <div class="my-mistake-top">
+          <p class="my-mistake-question">${escapeHtml(m.question)}</p>
+          <span class="my-mistake-meta">${escapeHtml(conceptName(m.concept))} · ${escapeHtml(when)}</span>
+        </div>
+        ${m.mistake ? `<span class="mistake-tag">${escapeHtml(m.mistake.label)}</span>` : ""}
+        ${steps}
+        <p class="my-mistake-answer">Your answer: <strong>${escapeHtml(m.studentAnswer || "–")}</strong>${m.answerCorrect ? " (right, but the working had a mistake)" : ""}</p>
+        <div class="my-mistake-actions"><button class="ghost-button my-mistake-retry" type="button" data-id="${escapeHtml(m.questionId)}">Try it again</button></div>
+      </li>`;
+  }).join("") || `<li class="my-mistake muted">No mistakes of this kind.</li>`;
+}
+
+async function loadMyMistakes() {
+  try {
+    const data = await api(`/api/students/${encodeURIComponent(state.studentId)}/mistakes`);
+    myMistakes = data.mistakes || [];
+  } catch {
+    myMistakes = [];
+  }
+  $("myMistakesCard").classList.toggle("hidden", myMistakes.length === 0);
+  if (!myMistakes.length) return;
+
+  // One filter option per kind of mistake, most frequent first.
+  const counts = {};
+  for (const m of myMistakes) if (m.mistake) counts[m.mistake.type] = { label: m.mistake.label, n: (counts[m.mistake.type]?.n || 0) + 1 };
+  const current = $("myMistakesFilter").value;
+  $("myMistakesFilter").innerHTML = `<option value="">All mistakes (${myMistakes.length})</option>` +
+    Object.entries(counts).sort((a, b) => b[1].n - a[1].n)
+      .map(([type, { label, n }]) => `<option value="${escapeHtml(type)}">${escapeHtml(label)} (${n})</option>`).join("");
+  if (counts[current]) $("myMistakesFilter").value = current;
+  renderMyMistakes();
+}
+
+$("myMistakesFilter").addEventListener("change", renderMyMistakes);
+$("myMistakesList").addEventListener("click", (event) => {
+  const button = event.target.closest(".my-mistake-retry");
+  if (button) startSession({ questionId: button.dataset.id });
+});
 
 // A question link from a printed practice sheet: ?q=g_dp1_2_3_4 opens that
 // exact question, so the student can type or photograph their paper working.
